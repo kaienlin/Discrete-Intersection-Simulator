@@ -1,4 +1,4 @@
-from typing import Tuple, Set, Dict
+from typing import Tuple, Set, Dict, Iterable
 import copy
 
 class Intersection:
@@ -7,8 +7,8 @@ class Intersection:
         self.__transitions: Set[Tuple[str, str]] = set()
         self.__adjacency_list: Dict[str, Set[str]] = dict()
         self.__trajectories: Set[Tuple[str]] = set()
-        self.__src_lanes: Set[str] = set()
-        self.__dst_lanes: Set[str] = set()
+        self.__src_lanes: Dict[str, Set[str]] = dict()
+        self.__dst_lanes: Dict[str, Set[str]] = dict()
         self.__cz_coordinates: Dict[str, Tuple[float, float]] = dict()
 
     def add_conflict_zone(self, cz_id: str) -> None:
@@ -40,17 +40,21 @@ class Intersection:
             if (trajectory[i], trajectory[i+1]) not in self.__transitions:
                 self.__transitions.add((trajectory[i], trajectory[i+1]))
 
-    def add_src_lane(self, src_lane_id: str) -> None:
+    def add_src_lane(self, src_lane_id: str, associated_CZs: Iterable[str]) -> None:
         '''
-        Add a source lane identifier to the intersection.
+        Add a source lane identifier and its associated CZs to the intersection.
         '''
-        self.__src_lanes.add(src_lane_id)
+        if src_lane_id in self.__src_lanes:
+            raise Exception(f"[Intersection.add_src_lane] src_lane_id {src_lane_id} already exists.")
+        self.__src_lanes[src_lane_id] = set(associated_CZs)
 
-    def add_dst_lane(self, dst_lane_id: str) -> None:
+    def add_dst_lane(self, dst_lane_id: str, associated_CZs: Iterable[str]) -> None:
         '''
-        Add a destination lane identifier to the intersection.
+        Add a destination lane identifier and its associated CZs to the intersection.
         '''
-        self.__dst_lanes.add(dst_lane_id)
+        if dst_lane_id in self.__dst_lanes:
+            raise Exception(f"[Intersection.add_dst_lane] dst_lane_id {dst_lane_id} already exists.")
+        self.__dst_lanes[dst_lane_id] = set(associated_CZs)
 
     def set_cz_coordinate(self, cz_id: str, x: float, y: float) -> None:
         '''
@@ -78,10 +82,10 @@ class Intersection:
         return copy.deepcopy(self.__trajectories)
 
     @property
-    def src_lanes(self) -> Set[str]:
+    def src_lanes(self) -> Dict[str, Set[str]]:
         return copy.deepcopy(self.__src_lanes)
 
     @property
-    def dst_lanes(self) -> Set[str]:
+    def dst_lanes(self) -> Dict[str, Set[str]]:
         return copy.deepcopy(self.__dst_lanes)
 
