@@ -35,6 +35,10 @@ class Intersection:
         Add a trajectory to the intersection.
         If an adjacent pair in the trajectory is not in the set of edges, add it.
         '''
+        if not any([trajectory[0] in lane_cz for lane_cz in self.__src_lanes.values()]):
+            raise Exception("[Intersection.add_trajectory] trajectory not belongs to any source lane")
+        if not any([trajectory[-1] in lane_cz for lane_cz in self.__dst_lanes.values()]):
+            raise Exception("[Intersection.add_trajectory] trajectory not belongs to any destination lane")
         self.__trajectories.add(trajectory)
         for i in range(len(trajectory) - 1):
             if (trajectory[i], trajectory[i+1]) not in self.__transitions:
