@@ -1,5 +1,8 @@
 from typing import Iterable, Set, Dict, Tuple
 
+from simulator.intersection import Intersection
+from simulator.vehicle import Vehicle
+
 from .Vertex import Vertex, VertexState
 from .Edge import Edge, EdgeType
 
@@ -7,10 +10,10 @@ class TimingConflictGraph:
     def __init__(
         self,
         vehicles: Set,
-        intersection: object
+        intersection: Intersection
     ):
         self.__vehicles: Set = vehicles
-        self.__intersection: object = intersection
+        self.__intersection: Intersection = intersection
         self.build_graph()
 
     def build_graph(self) -> None:
@@ -45,13 +48,13 @@ class TimingConflictGraph:
             print(f"* Vehicle {veh.id}")
             for cz_id in veh.trajectory:
                 v = self.get_v_by_idx(veh, cz_id)
-                print(f"    - ({v.vehicle.id}, {v.cz_id}): {v.state}; ", end = "")
+                print(f"    - ({v.vehicle.id}, {v.cz_id}): {v.state}; s = {v.entering_time} ", end = "")
                 print("parents: { ", end="")
                 for in_e in v.in_edges:
                     print(f"({in_e.v_from.vehicle.id}, {in_e.v_from.cz_id}) ", end="")
                 print("}")
 
-    def add_vehicle(self, vehicle: object) -> None:
+    def add_vehicle(self, vehicle: Vehicle) -> None:
         self.__vehicles.add(vehicle)
 
         for cz_id in vehicle.trajectory:
@@ -116,18 +119,18 @@ class TimingConflictGraph:
     def E(self) -> Iterable[Edge]:
         return self.__E.values()
 
-    def get_v_by_idx(self, vehicle: object, cz_id: str) -> Vertex:
+    def get_v_by_idx(self, vehicle: Vehicle, cz_id: str) -> Vertex:
         return self.__V[(vehicle.id, cz_id)]
 
     def get_e_by_v_pair(self, v_from: Vertex, v_to: Vertex) -> Edge:
         return self.__E[(v_from.id, v_to.id)]
 
-    def __add_vertex(self, vehicle: object, cz_id: str) -> None:
+    def __add_vertex(self, vehicle: Vehicle, cz_id: str) -> None:
         if (vehicle.id, cz_id) not in self.__V:
             v = Vertex(len(self.__V), vehicle, cz_id)
             self.__V[(vehicle.id, cz_id)] = v
 
-    def __add_edge_by_idx(self, veh_from: object, cz_id_from: str, veh_to: object, cz_id_to: str, type: EdgeType) -> None:
+    def __add_edge_by_idx(self, veh_from: Vehicle, cz_id_from: str, veh_to: Vehicle, cz_id_to: str, type: EdgeType) -> None:
         v_from = self.__V[(veh_from.id, cz_id_from)]
         v_to = self.__V[(veh_to.id, cz_id_to)]
         self.__add_edge_by_vtx(v_from, v_to, type)

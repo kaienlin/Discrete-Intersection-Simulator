@@ -2,6 +2,7 @@ import enum
 from typing import Set
 
 from simulator.tcg.Edge import Edge, EdgeType
+from simulator.vehicle import Vehicle
 
 class VertexState(enum.Enum):
     NON_EXECUTED = enum.auto()
@@ -13,13 +14,13 @@ class VertexState(enum.Enum):
 
 
 class Vertex:
-    def __init__(self, _id: int, vehicle: object, cz_id: str) -> None:
+    def __init__(self, _id: int, vehicle: Vehicle, cz_id: str) -> None:
         self.id: int = _id
-        self.vehicle: object = vehicle
+        self.vehicle: Vehicle = vehicle
         self.cz_id: str = cz_id
 
-        self.out_edges: Set[object] = set()
-        self.in_edges: Set[object] = set()
+        self.out_edges: Set[Edge] = set()
+        self.in_edges: Set[Edge] = set()
         self.entering_time: int = 0
         self.passing_time: int = vehicle.vertex_passing_time
 
@@ -32,10 +33,10 @@ class Vertex:
                 return self.passing_time + out_e.waiting_time
         return self.passing_time
 
-    def add_out_edge(self, edge: object) -> None:
+    def add_out_edge(self, edge: Edge) -> None:
         self.out_edges.add(edge)
 
-    def add_in_edge(self, edge: object) -> None:
+    def add_in_edge(self, edge: Edge) -> None:
         self.in_edges.add(edge)
     
     def __hash__(self) -> int:

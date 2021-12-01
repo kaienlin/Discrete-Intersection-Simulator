@@ -36,6 +36,7 @@ class Vehicle:
             (VehicleState.MOVING, VehicleState.WAITING),
             (VehicleState.MOVING, VehicleState.BLOCKED),
             (VehicleState.BLOCKED, VehicleState.WAITING),
+            (VehicleState.WAITING, VehicleState.LEAVED),
             (VehicleState.MOVING, VehicleState.LEAVED)
         }
 
@@ -55,7 +56,16 @@ class Vehicle:
     def get_cur_cz(self) -> str:
         if self.idx_on_traj == -1:
             return "^"
+        if self.idx_on_traj == len(self.__trajectory):
+            return "$"
         return self.__trajectory[self.__idx_on_traj]
+    
+    def get_next_cz(self) -> str:
+        if self.__idx_on_traj == len(self.__trajectory) - 1:
+            return "$"
+        if self.__idx_on_traj == len(self.__trajectory):
+            return " "
+        return self.__trajectory[self.__idx_on_traj + 1]
 
     def __hash__(self):
         return hash(self.__id)

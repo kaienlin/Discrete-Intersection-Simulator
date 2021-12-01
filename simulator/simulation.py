@@ -5,6 +5,7 @@ from .vehicle import Vehicle, VehicleState
 from typing import Iterable, Tuple, List, Dict
 import heapq
 import enum
+import logging
 
 class EventType(enum.Enum):
     END_MOVING = enum.auto()
@@ -41,7 +42,6 @@ class VertexEventQueue:
 
     def push(self, t: int, type: EventType, v: Vertex):
         if EventQueueItem(t, type, v) not in self.__heap:
-            #print(f"[push] {v.vehicle.id} {type}")
             heapq.heappush(self.__heap, EventQueueItem(t, type, v))
 
 
@@ -52,6 +52,7 @@ class Simulator:
     ):
         self.__intersection: Intersection = intersection
         self.__mode: str = "MANAGED"
+        self.__logger = logging.getLogger("Simulator")
         
         self.__vehicles: Dict[str, Vehicle] = dict()
         self.__status: str = "INITIALIZED"
@@ -156,23 +157,41 @@ class Simulator:
             self.__event_queue.push(vehicle.earliest_arrival_time, EventType.ARRIVAL, v)
 
     @property
+    def intersection(self) -> Intersection:
+        return self.__intersection
+        
+    @property
     def status(self) -> str:
         return self.__status
 
     def print_TCG(self) -> None:
         self.__TCG.print()
 
+    def get_waiting_veh_of_src_lane(self, src_lane_id: str):
+        for veh in self.__vehicles.values():
+            if veh.idx_on_traj == -1 and veh.src_lane_id == src_lane_id and veh.state == VehicleState.WAITING:
+                return veh
+        return None
+
+    def get_waiting_veh_on_cz(self, cz_id: str):
+        for veh in self.__vehicles.values():
+            cur_cz_id = veh.get_cur_cz()
+            if cur_cz_id == cz_id:
+                return veh
+        return None
+            
     def run(self) -> None:
         self.__status = "RUNNING"
         self.__TCG = TimingConflictGraph(set(self.__vehicles.values()), self.__intersection)
         self.__enqueue_front_vertices()
     
     def reset_simulation(self) -> None:
+        self.__status = "INITIALIZED"
         self.__timestamp = 0
         self.__event_queue.clear()
-        self.__reset_vertices_state()
+        self.__TCG.reset_vertices_state()
 
-    def simulation_step_report(self) -> Iterable[Vehicle]:
+    def simulation_step_report(self) -> Tuple[int, Iterable[Vehicle]]:
         if any([veh.state == VehicleState.WAITING for veh in self.__vehicles.values()]):
             if not self.__prev_moved:
                 self.__timestamp += 1
@@ -188,11 +207,14 @@ class Simulator:
         while not self.__event_queue.empty() and self.__event_queue.top().time == self.__timestamp:
             ev = self.__event_queue.top()
             self.__event_queue.pop()
-            #print(f"[report] {ev.vertex.vehicle.id} {ev.type}")
+            #self.__logger.warning(f"[report] {ev.vertex.vehicle.id} {ev.type}")
             if ev.type == EventType.END_MOVING:
                 if ev.vertex.vehicle.on_last_cz():
+                    ev.vertex.vehicle.set_state(VehicleState.WAITING)
+                    ev.vertex.vehicle.move_to_next_cz()
                     ev.vertex.vehicle.set_state(VehicleState.LEAVED)
                     self.__TCG.finish_execute(ev.vertex)
+                    self.__release_cz(ev.vertex)
                 elif self.__next_not_blocked(ev.vertex):
                     ev.vertex.vehicle.set_state(VehicleState.WAITING)
                 else:
@@ -204,6 +226,14 @@ class Simulator:
                     ev.vertex.vehicle.set_state(VehicleState.BLOCKED)   
 
         return (self.__timestamp, list(self.__vehicles.values()))
+
+    def __release_cz(self, vertex: Vertex):
+        for out_e in vertex.out_edges:
+            if out_e.type == EdgeType.TYPE_1:
+                continue
+            child = out_e.v_to
+            if child.vehicle.state != VehicleState.WAITING and self.__ready_condition(child):
+                child.vehicle.set_state(VehicleState.WAITING)
 
     def simulation_step_act(self, allowed_veh_id: str) -> None:
         if allowed_veh_id == "":
@@ -220,13 +250,8 @@ class Simulator:
         if vehicle.idx_on_traj != -1:
             cur_vertex = self.__TCG.get_v_by_idx(vehicle, vehicle.get_cur_cz())
             self.__TCG.finish_execute(cur_vertex)
-            for out_e in cur_vertex.out_edges:
-                if out_e.type == EdgeType.TYPE_1:
-                    continue
-                child = out_e.v_to
-                if self.__ready_condition(child):
-                    child.vehicle.set_state(VehicleState.WAITING)
-        next_cz = vehicle.trajectory[vehicle.idx_on_traj + 1]
+            self.__release_cz(cur_vertex)
+        next_cz = vehicle.get_next_cz()
         next_vertex = self.__TCG.get_v_by_idx(vehicle, next_cz)
 
         vehicle.move_to_next_cz()
