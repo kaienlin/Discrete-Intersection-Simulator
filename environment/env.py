@@ -115,17 +115,17 @@ class GraphBasedSimEnv(gym.Env):
             n_states *= len(cz_ids) + 1
         
         # number of (not left) vehicles in each source lane
-        #k = len(self.sim.intersection.src_lanes)
-        #self.queue_sizes_max_no = math.comb(MAX_VEHICLE_NUM + k, k)
-        #n_states *= self.queue_sizes_max_no
+        k = len(self.sim.intersection.src_lanes)
+        self.queue_sizes_max_no = math.comb(MAX_VEHICLE_NUM + k, k)
+        n_states *= self.queue_sizes_max_no
 
-        #self.queue_sizes_no_map: Dict[Tuple[int], int] = dict()
-        #self.queue_sizes_no_inv: Dict[int, Tuple[int]] = dict()
-        #partitions = gen_int_partition(MAX_VEHICLE_NUM, len(self.sim.intersection.src_lanes))
+        self.queue_sizes_no_map: Dict[Tuple[int], int] = dict()
+        self.queue_sizes_no_inv: Dict[int, Tuple[int]] = dict()
+        partitions = gen_int_partition(MAX_VEHICLE_NUM, len(self.sim.intersection.src_lanes))
 
-        #for i, p in enumerate(partitions):
-        #    self.queue_sizes_no_map[p] = i
-        #    self.queue_sizes_no_inv[i] = p
+        for i, p in enumerate(partitions):
+            self.queue_sizes_no_map[p] = i
+            self.queue_sizes_no_inv[i] = p
 
         return n_states
 
@@ -194,11 +194,11 @@ class GraphBasedSimEnv(gym.Env):
             trans = self.trans_per_src_lane[src_lane_id]
             state = state * (len(trans) + 1) + src_lane_state[src_lane_id]
 
-        #queue_size_list = []
-        #for src_lane_id in sorted(queue_size_per_src_lane):
-        #    queue_size = queue_size_per_src_lane[src_lane_id]
-        #    queue_size_list.append(queue_size)
-        #state = state * self.queue_sizes_max_no + self.queue_sizes_no_map[tuple(queue_size_list)]
+        queue_size_list = []
+        for src_lane_id in sorted(queue_size_per_src_lane):
+            queue_size = queue_size_per_src_lane[src_lane_id]
+            queue_size_list.append(queue_size)
+        state = state * self.queue_sizes_max_no + self.queue_sizes_no_map[tuple(queue_size_list)]
 
         return state
 
@@ -208,10 +208,10 @@ class GraphBasedSimEnv(gym.Env):
             "vehicle_positions": {}
         }
 
-        #queue_size_tuple = self.queue_sizes_no_inv[state % self.queue_sizes_max_no]
-        #state //= self.queue_sizes_max_no
-        #for i, src_lane_id in enumerate(sorted(self.sim.intersection.src_lanes.keys())):
-        #    res["queue_size_per_src_lane"][src_lane_id] = queue_size_tuple[i]
+        queue_size_tuple = self.queue_sizes_no_inv[state % self.queue_sizes_max_no]
+        state //= self.queue_sizes_max_no
+        for i, src_lane_id in enumerate(sorted(self.sim.intersection.src_lanes.keys())):
+            res["queue_size_per_src_lane"][src_lane_id] = queue_size_tuple[i]
 
         for src_lane_id in sorted(self.sim.intersection.src_lanes)[::-1]:
             trans = self.trans_per_src_lane[src_lane_id]
