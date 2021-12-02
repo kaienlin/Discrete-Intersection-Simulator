@@ -9,6 +9,7 @@ import logging
 
 class EventType(enum.Enum):
     END_MOVING = enum.auto()
+    START_WAITING = enum.auto()
     ARRIVAL = enum.auto()
 
 
@@ -139,6 +140,8 @@ class Simulator:
             if (p, v) is an TYPE_2 or TYPE_3 edge, then p.state should be executed
         this is called "ready condition" temporarily
         '''
+        if not self.__ready_condition(v):
+            print(v.vehicle.state)
         assert(self.__ready_condition(v))
         res = self.__timestamp
         if v.cz_id == v.vehicle.trajectory[0]:
@@ -222,14 +225,21 @@ class Simulator:
                     self.__TCG.finish_execute(ev.vertex)
                     self.__release_cz(ev.vertex)
                 elif self.__next_not_blocked(ev.vertex):
-                    ev.vertex.vehicle.set_state(VehicleState.WAITING)
+                    ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
+                    next_v = self.__TCG.get_v_by_idx(ev.vertex.vehicle, ev.vertex.vehicle.get_next_cz())
+                    avail_time = self.__compute_earliest_entering_time(next_v)
+                    self.__event_queue.push(avail_time, EventType.START_WAITING, next_v)
+                    #ev.vertex.vehicle.set_state(VehicleState.WAITING)
                 else:
                     ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
             elif ev.type == EventType.ARRIVAL:
                 if self.__not_blocked(ev.vertex):
                     ev.vertex.vehicle.set_state(VehicleState.WAITING)
                 else:
-                    ev.vertex.vehicle.set_state(VehicleState.BLOCKED)   
+                    ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
+            elif ev.type == EventType.START_WAITING:
+                if self.__not_blocked(ev.vertex):
+                    ev.vertex.vehicle.set_state(VehicleState.WAITING)  
 
         return (self.__timestamp, list(self.__vehicles.values()))
 
@@ -239,7 +249,9 @@ class Simulator:
                 continue
             child = out_e.v_to
             if child.vehicle.state == VehicleState.BLOCKED and self.__ready_condition(child):
-                child.vehicle.set_state(VehicleState.WAITING)
+                avail_time = self.__compute_earliest_entering_time(child)
+                self.__event_queue.push(avail_time, EventType.START_WAITING, child)
+                #child.vehicle.set_state(VehicleState.WAITING)
 
     def __block_cz(self, vertex: Vertex):
         for out_e in vertex.out_edges:
