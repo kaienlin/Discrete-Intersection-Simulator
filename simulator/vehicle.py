@@ -6,7 +6,7 @@ class VehicleState(enum.Enum):
     WAITING = enum.auto()
     MOVING = enum.auto()
     BLOCKED = enum.auto()
-    LEAVED = enum.auto()
+    LEFT = enum.auto()
 
 
 class Vehicle:
@@ -33,12 +33,17 @@ class Vehicle:
             (VehicleState.NOT_ARRIVED, VehicleState.WAITING),
             (VehicleState.NOT_ARRIVED, VehicleState.BLOCKED),
             (VehicleState.WAITING, VehicleState.MOVING),
+            (VehicleState.WAITING, VehicleState.BLOCKED),
             (VehicleState.MOVING, VehicleState.WAITING),
             (VehicleState.MOVING, VehicleState.BLOCKED),
             (VehicleState.BLOCKED, VehicleState.WAITING),
-            (VehicleState.WAITING, VehicleState.LEAVED),
-            (VehicleState.MOVING, VehicleState.LEAVED)
+            (VehicleState.WAITING, VehicleState.LEFT),
+            (VehicleState.MOVING, VehicleState.LEFT)
         }
+
+    def reset(self) -> None:
+        self.__state = VehicleState.NOT_ARRIVED
+        self.__idx_on_traj = -1
 
     def on_last_cz(self) -> bool:
         return self.__idx_on_traj == len(self.trajectory) - 1
@@ -50,7 +55,7 @@ class Vehicle:
 
     def set_state(self, state: VehicleState) -> None:
         if (self.__state, state) not in self.valid_transitions:
-            raise Exception(f"[Vehicle.set_state] invalid state transition {self.__state} -> {state}")
+            raise Exception(f"[Vehicle.set_state] invalid state transition {self.__state} -> {state} with {self.id}")
         self.__state = state
 
     def get_cur_cz(self) -> str:

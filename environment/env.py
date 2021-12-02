@@ -11,7 +11,7 @@ from simulator.simulation import Simulator
 from simulator.vehicle import Vehicle, VehicleState
 
 MAX_WAITING_TIME_SUM = 1000000000
-MAX_VEHICLE_NUM = 10
+MAX_VEHICLE_NUM = 8
 DEADLOCK_PENALTY = 1000000000
 
 def gen_int_partition(n: int, k: int):
@@ -80,7 +80,8 @@ class GraphBasedSimEnv(gym.Env):
         vehicles = []
         while True:
             timestamp, vehicles = self.sim.simulation_step_report()
-            waiting_time_sum += (timestamp - self.prev_timestamp) * len(self.prev_idle_veh)
+            num_waiting = len(self.prev_idle_veh) - (1 if veh_id in self.prev_idle_veh else 0)
+            waiting_time_sum += (timestamp - self.prev_timestamp) * num_waiting
             self.prev_timestamp = timestamp
             self.prev_vehicles = copy.deepcopy(vehicles)
             self.prev_idle_veh = set([veh.id for veh in vehicles if self.__is_idle_state(veh.state)])
@@ -108,25 +109,23 @@ class GraphBasedSimEnv(gym.Env):
         # number of states of vehicle position
         n_states = 1
         for associated_czs in intersection.src_lanes.values():
-            n_states *= len(associated_czs) + 1
+            #n_states *= len(associated_czs) + 1
+            n_states *= 2 * (len(associated_czs) + 1)
         for cz_ids in trans_per_cz_id.values():
             n_states *= len(cz_ids) + 1
-
-        # if a vehicle on a certain zone is waiting
-        n_states *= 2 ** (len(self.sim.intersection.src_lanes) + len(self.sim.intersection.conflict_zones))
         
         # number of (not left) vehicles in each source lane
-        k = len(self.sim.intersection.src_lanes)
-        self.queue_sizes_max_no = math.comb(MAX_VEHICLE_NUM + k, k)
-        n_states *= self.queue_sizes_max_no
+        #k = len(self.sim.intersection.src_lanes)
+        #self.queue_sizes_max_no = math.comb(MAX_VEHICLE_NUM + k, k)
+        #n_states *= self.queue_sizes_max_no
 
-        self.queue_sizes_no_map: Dict[Tuple[int], int] = dict()
-        self.queue_sizes_no_inv: Dict[int, Tuple[int]] = dict()
-        partitions = gen_int_partition(MAX_VEHICLE_NUM, len(self.sim.intersection.src_lanes))
+        #self.queue_sizes_no_map: Dict[Tuple[int], int] = dict()
+        #self.queue_sizes_no_inv: Dict[int, Tuple[int]] = dict()
+        #partitions = gen_int_partition(MAX_VEHICLE_NUM, len(self.sim.intersection.src_lanes))
 
-        for i, p in enumerate(partitions):
-            self.queue_sizes_no_map[p] = i
-            self.queue_sizes_no_inv[i] = p
+        #for i, p in enumerate(partitions):
+        #    self.queue_sizes_no_map[p] = i
+        #    self.queue_sizes_no_inv[i] = p
 
         return n_states
 
@@ -172,32 +171,34 @@ class GraphBasedSimEnv(gym.Env):
         for veh in vehicles:
             if veh.idx_on_traj == -1 and veh.state != VehicleState.WAITING:
                 queue_size_per_src_lane[veh.src_lane_id] += 1
-            elif veh.state != VehicleState.LEAVED:
+            elif veh.state != VehicleState.LEFT:
                 veh_pos = veh.get_cur_cz()
                 next_veh_pos = veh.get_next_cz()
                 if veh_pos == "^":
                     if veh.state == VehicleState.WAITING:
                         src_lane_state[veh.src_lane_id] = self.trans_per_src_lane[veh.src_lane_id].index(next_veh_pos) + 1
-                else:
+                elif veh_pos != "$":
                     cz_state[veh_pos] = self.trans_per_cz_id[veh_pos].index(next_veh_pos) + 1
+                    cz_state[veh_pos] *= 2
                     if veh.state == VehicleState.WAITING:
-                        cz_state[veh_pos] = cz_state[veh_pos] * 2 + 1
+                        cz_state[veh_pos] += 1
         
         state: int = 0
 
         for cz_id in sorted(self.sim.intersection.conflict_zones):
             trans = self.trans_per_cz_id[cz_id]
             state = state * 2 * (len(trans) + 1) + cz_state[cz_id]
+            #state = state * (len(trans) + 1) + cz_state[cz_id]
 
         for src_lane_id in sorted(self.sim.intersection.src_lanes):
             trans = self.trans_per_src_lane[src_lane_id]
             state = state * (len(trans) + 1) + src_lane_state[src_lane_id]
 
-        queue_size_list = []
-        for src_lane_id in sorted(queue_size_per_src_lane):
-            queue_size = queue_size_per_src_lane[src_lane_id]
-            queue_size_list.append(queue_size)
-        state = state * self.queue_sizes_max_no + self.queue_sizes_no_map[tuple(queue_size_list)]
+        #queue_size_list = []
+        #for src_lane_id in sorted(queue_size_per_src_lane):
+        #    queue_size = queue_size_per_src_lane[src_lane_id]
+        #    queue_size_list.append(queue_size)
+        #state = state * self.queue_sizes_max_no + self.queue_sizes_no_map[tuple(queue_size_list)]
 
         return state
 
@@ -207,10 +208,10 @@ class GraphBasedSimEnv(gym.Env):
             "vehicle_positions": {}
         }
 
-        queue_size_tuple = self.queue_sizes_no_inv[state % self.queue_sizes_max_no]
-        state //= self.queue_sizes_max_no
-        for i, src_lane_id in enumerate(sorted(self.sim.intersection.src_lanes.keys())):
-            res["queue_size_per_src_lane"][src_lane_id] = queue_size_tuple[i]
+        #queue_size_tuple = self.queue_sizes_no_inv[state % self.queue_sizes_max_no]
+        #state //= self.queue_sizes_max_no
+        #for i, src_lane_id in enumerate(sorted(self.sim.intersection.src_lanes.keys())):
+        #    res["queue_size_per_src_lane"][src_lane_id] = queue_size_tuple[i]
 
         for src_lane_id in sorted(self.sim.intersection.src_lanes)[::-1]:
             trans = self.trans_per_src_lane[src_lane_id]
@@ -223,8 +224,9 @@ class GraphBasedSimEnv(gym.Env):
             trans = self.trans_per_cz_id[cz_id]
             cz_state = state % (2 * (len(trans) + 1))
             state //= 2 * (len(trans) + 1)
-
-            is_waiting = state % 2
+            #cz_state = state % (len(trans) + 1)
+            #state //= len(trans) + 1
+            is_waiting = cz_state % 2
             cz_state //= 2
             if cz_state > 0:
                 res["vehicle_positions"][cz_id] = {

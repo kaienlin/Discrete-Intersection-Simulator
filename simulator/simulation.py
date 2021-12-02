@@ -164,6 +164,10 @@ class Simulator:
     def status(self) -> str:
         return self.__status
 
+    @property
+    def timestamp(self) -> int:
+        return self.__timestamp
+
     def print_TCG(self) -> None:
         self.__TCG.print()
 
@@ -190,6 +194,8 @@ class Simulator:
         self.__timestamp = 0
         self.__event_queue.clear()
         self.__TCG.reset_vertices_state()
+        for veh in self.__vehicles.values():
+            veh.reset()
 
     def simulation_step_report(self) -> Tuple[int, Iterable[Vehicle]]:
         if any([veh.state == VehicleState.WAITING for veh in self.__vehicles.values()]):
@@ -198,7 +204,7 @@ class Simulator:
         elif not self.__event_queue.empty():
             self.__timestamp = self.__event_queue.top().time
         else:
-            if any([veh.state != VehicleState.LEAVED for veh in self.__vehicles.values()]):
+            if any([veh.state != VehicleState.LEFT for veh in self.__vehicles.values()]):
                 self.__status = "DEADLOCK"
             else:
                 self.__status = "TERMINATED"
@@ -212,7 +218,7 @@ class Simulator:
                 if ev.vertex.vehicle.on_last_cz():
                     ev.vertex.vehicle.set_state(VehicleState.WAITING)
                     ev.vertex.vehicle.move_to_next_cz()
-                    ev.vertex.vehicle.set_state(VehicleState.LEAVED)
+                    ev.vertex.vehicle.set_state(VehicleState.LEFT)
                     self.__TCG.finish_execute(ev.vertex)
                     self.__release_cz(ev.vertex)
                 elif self.__next_not_blocked(ev.vertex):
@@ -232,8 +238,17 @@ class Simulator:
             if out_e.type == EdgeType.TYPE_1:
                 continue
             child = out_e.v_to
-            if child.vehicle.state != VehicleState.WAITING and self.__ready_condition(child):
+            if child.vehicle.state == VehicleState.BLOCKED and self.__ready_condition(child):
                 child.vehicle.set_state(VehicleState.WAITING)
+
+    def __block_cz(self, vertex: Vertex):
+        for out_e in vertex.out_edges:
+            if out_e.type == EdgeType.TYPE_1:
+                continue
+            child = out_e.v_to
+            if child.vehicle.state == VehicleState.WAITING and child.vehicle.get_next_cz() == vertex.cz_id \
+               and not self.__ready_condition(child):
+                child.vehicle.set_state(VehicleState.BLOCKED)
 
     def simulation_step_act(self, allowed_veh_id: str) -> None:
         if allowed_veh_id == "":
@@ -259,4 +274,5 @@ class Simulator:
         next_vertex.entering_time = self.__timestamp
         self.__event_queue.push(next_vertex.entering_time + next_vertex.get_consumed_time(), EventType.END_MOVING, next_vertex)
         self.__TCG.start_execute(next_vertex)
+        self.__block_cz(next_vertex)
                 
