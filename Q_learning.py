@@ -72,10 +72,12 @@ def evaluate_Q(env, Q):
         action = 0
         dec = env.decode_state(state)
         for pos, next in dec["vehicle_positions"].items():
-            if "(SRC)" in pos:
-                action = env.encode_action(pos[5:], is_cz=False)
+            if not next["waiting"]:
+                continue
+            if next["type"] == "src":
+                action = env.encode_action(pos, is_cz=False)
                 break
-            elif next["waiting"]:
+            elif next["type"] == "cz":
                 action = env.encode_action(pos, is_cz=True)
                 break
         state, cost, done, _ = env.step(action)

@@ -2,9 +2,7 @@ import gym
 from gym import spaces
 import math
 import copy
-
 from typing import Iterable, Set, Dict, List, Tuple
-from simulator import intersection
 
 from simulator.intersection import Intersection
 from simulator.simulation import Simulator
@@ -144,25 +142,21 @@ class GraphBasedSimEnv(gym.Env):
         num_src_lane = len(self.sim.intersection.src_lanes)
         num_cz = len(self.sim.intersection.conflict_zones)
         if 1 <= action <= num_src_lane:
-            sorted_src_lane_ids = sorted(self.sim.intersection.src_lanes.keys())
-            veh = self.sim.get_waiting_veh_of_src_lane(sorted_src_lane_ids[action - 1])
+            veh = self.sim.get_waiting_veh_of_src_lane(self.sorted_src_lane_ids[action - 1])
             return "" if veh is None else veh.id
         elif num_src_lane + 1 <= action <= num_cz + num_src_lane:
-            sorted_cz_ids = sorted(self.sim.intersection.conflict_zones)
-            veh = self.sim.get_waiting_veh_on_cz(sorted_cz_ids[action - num_src_lane - 1])
+            veh = self.sim.get_waiting_veh_on_cz(self.sorted_cz_ids[action - num_src_lane - 1])
             return "" if veh is None else veh.id
 
     def decode_action(self, action: int) -> str:
         if action == 0:
-            return "do nothing"
+            return ""
         num_src_lane = len(self.sim.intersection.src_lanes)
         num_cz = len(self.sim.intersection.conflict_zones)
         if 1 <= action <= num_src_lane:
-            sorted_src_lane_ids = sorted(self.sim.intersection.src_lanes.keys())
-            return f"move the vehicle waiting on source lane {sorted_src_lane_ids[action - 1]}"
+            return {"type": "src", "pos": f"{self.sorted_src_lane_ids[action - 1]}"}
         elif num_src_lane + 1 <= action <= num_cz + num_src_lane:
-            sorted_cz_ids = sorted(self.sim.intersection.conflict_zones)
-            return f"move the vehicle waiting on conflict zone {sorted_cz_ids[action - num_src_lane - 1]}"
+            return {"type": "cz", "pos": f"{self.sorted_cz_ids[action - num_src_lane - 1]}"}
 
     def encode_state(self, vehicles: Iterable[Vehicle]) -> int:
         queue_size_per_src_lane = {src_lane_id: 0 for src_lane_id in self.sim.intersection.src_lanes}
@@ -185,17 +179,17 @@ class GraphBasedSimEnv(gym.Env):
         
         state: int = 0
 
-        for cz_id in sorted(self.sim.intersection.conflict_zones):
+        for cz_id in self.sorted_cz_ids:
             trans = self.trans_per_cz_id[cz_id]
             state = state * 2 * (len(trans) + 1) + cz_state[cz_id]
             #state = state * (len(trans) + 1) + cz_state[cz_id]
 
-        for src_lane_id in sorted(self.sim.intersection.src_lanes):
+        for src_lane_id in self.sorted_src_lane_ids:
             trans = self.trans_per_src_lane[src_lane_id]
             state = state * (len(trans) + 1) + src_lane_state[src_lane_id]
 
         queue_size_list = []
-        for src_lane_id in sorted(queue_size_per_src_lane):
+        for src_lane_id in self.sorted_src_lane_ids:
             queue_size = queue_size_per_src_lane[src_lane_id]
             queue_size_list.append(queue_size)
         state = state * self.queue_sizes_max_no + self.queue_sizes_no_map[tuple(queue_size_list)]
@@ -210,17 +204,21 @@ class GraphBasedSimEnv(gym.Env):
 
         queue_size_tuple = self.queue_sizes_no_inv[state % self.queue_sizes_max_no]
         state //= self.queue_sizes_max_no
-        for i, src_lane_id in enumerate(sorted(self.sim.intersection.src_lanes.keys())):
+        for i, src_lane_id in enumerate(self.sorted_src_lane_ids):
             res["queue_size_per_src_lane"][src_lane_id] = queue_size_tuple[i]
 
-        for src_lane_id in sorted(self.sim.intersection.src_lanes)[::-1]:
+        for src_lane_id in self.sorted_src_lane_ids[::-1]:
             trans = self.trans_per_src_lane[src_lane_id]
             lane_state = state % (len(trans) + 1)
             state //= len(trans) + 1
             if lane_state > 0:
-                res["vehicle_positions"][f"(SRC){src_lane_id}"] = trans[lane_state - 1]
+                res["vehicle_positions"][f"{src_lane_id}"] = {
+                    "type": "src",
+                    "waiting": True,
+                    "next_cz": trans[lane_state - 1]
+                }
             
-        for cz_id in sorted(self.sim.intersection.conflict_zones)[::-1]:
+        for cz_id in self.sorted_cz_ids[::-1]:
             trans = self.trans_per_cz_id[cz_id]
             cz_state = state % (2 * (len(trans) + 1))
             state //= 2 * (len(trans) + 1)
@@ -230,8 +228,9 @@ class GraphBasedSimEnv(gym.Env):
             cz_state //= 2
             if cz_state > 0:
                 res["vehicle_positions"][cz_id] = {
+                    "type": "cz",
                     "waiting": is_waiting,
-                    "next_cz": trans[cz_state - 1]
+                    "next_pos": trans[cz_state - 1]
                 }
             
         return res  
