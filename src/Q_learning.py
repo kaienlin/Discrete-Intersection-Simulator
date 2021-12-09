@@ -3,7 +3,7 @@ import sys, time, os, pickle
 import numpy as np
 import matplotlib.pyplot as plt
 
-from environment.env import GraphBasedSimEnv
+from environment import GraphBasedSimEnv
 
 from utility import get_new_simulator, get_4cz_intersection
 

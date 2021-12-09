@@ -1,7 +1,7 @@
 import random
 
-from simulator.intersection import Intersection
-from simulator.simulation import Simulator
+from simulator import Intersection
+from simulator import Simulator
 
 def get_4cz_intersection():
     '''
