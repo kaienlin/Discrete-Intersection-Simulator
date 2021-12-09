@@ -3,6 +3,7 @@ from gym import spaces
 import math
 import copy
 from typing import Iterable, Set, Dict, List, Tuple
+from functools import lru_cache
 
 from simulator.intersection import Intersection
 from simulator.simulation import Simulator
@@ -148,6 +149,7 @@ class GraphBasedSimEnv(gym.Env):
             veh = self.sim.get_waiting_veh_on_cz(self.sorted_cz_ids[action - num_src_lane - 1])
             return "" if veh is None else veh.id
 
+    @lru_cache(maxsize=128)
     def decode_action(self, action: int) -> str:
         if action == 0:
             return ""
@@ -196,10 +198,11 @@ class GraphBasedSimEnv(gym.Env):
 
         return state
 
+    @lru_cache(maxsize=1024)
     def decode_state(self, state: int) -> Dict:
         res: Dict = {
             "queue_size_per_src_lane": {},
-            "vehicle_positions": {}
+            "vehicle_positions": []
         }
 
         queue_size_tuple = self.queue_sizes_no_inv[state % self.queue_sizes_max_no]
@@ -212,11 +215,12 @@ class GraphBasedSimEnv(gym.Env):
             lane_state = state % (len(trans) + 1)
             state //= len(trans) + 1
             if lane_state > 0:
-                res["vehicle_positions"][f"{src_lane_id}"] = {
+                res["vehicle_positions"].append({
+                    "id": src_lane_id,
                     "type": "src",
                     "waiting": True,
                     "next_cz": trans[lane_state - 1]
-                }
+                })
             
         for cz_id in self.sorted_cz_ids[::-1]:
             trans = self.trans_per_cz_id[cz_id]
@@ -227,11 +231,12 @@ class GraphBasedSimEnv(gym.Env):
             is_waiting = cz_state % 2
             cz_state //= 2
             if cz_state > 0:
-                res["vehicle_positions"][cz_id] = {
+                res["vehicle_positions"].append({
+                    "id": cz_id,
                     "type": "cz",
                     "waiting": is_waiting,
                     "next_pos": trans[cz_state - 1]
-                }
+                })
             
         return res  
 

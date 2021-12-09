@@ -71,14 +71,14 @@ def evaluate_Q(env, Q):
         # Greedy Scheduler
         action = 0
         dec = env.decode_state(state)
-        for pos, next in dec["vehicle_positions"].items():
-            if not next["waiting"]:
+        for pos in dec["vehicle_positions"]:
+            if not pos["waiting"]:
                 continue
-            if next["type"] == "src":
-                action = env.encode_action(pos, is_cz=False)
+            if pos["type"] == "src":
+                action = env.encode_action(pos["id"], is_cz=False)
                 break
-            elif next["type"] == "cz":
-                action = env.encode_action(pos, is_cz=True)
+            elif pos["type"] == "cz":
+                action = env.encode_action(pos["id"], is_cz=True)
                 break
         state, cost, done, _ = env.step(action)
         cost_sum += cost
@@ -86,7 +86,7 @@ def evaluate_Q(env, Q):
             
 
 def Q_learning():
-    num_training_epoch = 10000
+    num_training_epoch = 100
     num_evaluation_epoch = 1
 
     # create simulator and environment
