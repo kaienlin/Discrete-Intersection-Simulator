@@ -69,6 +69,13 @@ class Intersection:
             raise Exception(f"[Intersection.set_cz_coordinate] cz_id {cz_id} not in conflict zones")
         self.__cz_coordinates[cz_id] = (x, y)
 
+    def get_traj_dst_lane(self, traj: Tuple[str]) -> str:
+        assert(traj in self.__trajectories)
+        for dst_lane_id, czs in self.__dst_lanes.items():
+            if traj[-1] in czs:
+                return dst_lane_id
+        assert(False)
+
     @property
     def conflict_zones(self) -> Set[str]:
         return copy.deepcopy(self.__conflict_zones)

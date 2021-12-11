@@ -2,10 +2,13 @@ import random
 import sys, time, os, pickle
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Iterable
 
 from environment import GraphBasedSimEnv
+from simulator import Intersection, Simulator
 
-from utility import get_new_simulator, get_4cz_intersection
+from utility import get_4cz_intersection
+from traffic_gen import random_traffic_generator, enumerate_traffic_patterns_generator
 
 def load_Q_table(env):
     if os.path.exists("./Q.npy"):
@@ -85,36 +88,41 @@ def evaluate_Q(env, Q):
     print(f"  * Greedy: {cost_sum}")
             
 
-def Q_learning():
-    num_training_epoch = 100
+def Q_learning(simulator_generator: Iterable[Simulator]):
     num_evaluation_epoch = 1
 
     # create simulator and environment
-    sim = get_new_simulator()
+    sim = next(simulator_generator)
     env = GraphBasedSimEnv(sim)
 
     Q = load_Q_table(env)
     seen_state = pickle.load(open("seen.p", "rb")) if os.path.exists("seen.p") else set()
 
-    for epoch in range(num_training_epoch):
+    #for epoch in range(num_training_epoch):
+    epoch = 0
+    while True:
         print(f"epoch = {epoch}: {len(seen_state)} / {env.observation_space.n} states explored")
         train_Q(env, Q, seen_state)
         
-        if (epoch + 1) % 100 == 0:
-            sim = get_new_simulator()
+        if (epoch + 1) % 10 == 0:
+            try:
+                sim = next(simulator_generator)
+            except StopIteration:
+                break
             env = GraphBasedSimEnv(sim)
+
+        if (epoch + 1) % 10000 == 0:
+            save_Q_table(Q)
+            pickle.dump(seen_state, open("seen.p", "wb"))
+        epoch += 1
 
     save_Q_table(Q)
     pickle.dump(seen_state, open("seen.p", "wb"))
 
-    #unexplored_state = random.choice(list(set(range(env.observation_space.n)).difference(seen_state)))
-    #print(env.decode_state(unexplored_state))
-
     # Evaluation
-    for epoch in range(num_evaluation_epoch):
-        sim = get_new_simulator()
+    random_sim_gen = random_traffic_generator(intersection, num_iter=num_evaluation_epoch)
+    for sim in random_sim_gen:
         env = GraphBasedSimEnv(sim)
-
         evaluate_Q(env, Q)      
 
 
@@ -123,5 +131,6 @@ if __name__ == "__main__":
     random.seed(seed)
     np.random.seed(seed)
     intersection = get_4cz_intersection()
-    Q_learning()
+    sim_gen = enumerate_traffic_patterns_generator(intersection)
+    Q_learning(sim_gen)
 
