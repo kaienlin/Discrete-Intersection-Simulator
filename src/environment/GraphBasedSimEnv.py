@@ -1,6 +1,5 @@
 import gym
 from gym import spaces
-import math
 import copy
 from typing import Iterable, Set, Dict, List, Tuple
 from functools import lru_cache
@@ -8,10 +7,6 @@ from functools import lru_cache
 from simulator.intersection import Intersection
 from simulator.simulation import Simulator
 from simulator.vehicle import Vehicle, VehicleState
-
-MAX_WAITING_TIME_SUM = 1000000000
-MAX_VEHICLE_NUM = 8
-DEADLOCK_PENALTY = 1000000000
 
 def gen_int_partition(n: int, k: int):
     res: Set[Tuple[int]] = set()
@@ -51,9 +46,11 @@ class GraphBasedSimEnv(gym.Env):
     The cost is a non-negative integer the waiting time increased between the
     previous and the current state.
     '''
-    def __init__(self, sim: Simulator):
+    DEADLOCK_PENALTY = 1000000000
+    def __init__(self, sim: Simulator, queue_size_scale: Tuple[int] = (1,)):
         super(GraphBasedSimEnv, self).__init__()
         self.sim = sim
+        self.queue_size_scale = queue_size_scale
 
         # The sorted ids are for state encoding
         self.sorted_src_lane_ids = sorted(self.sim.intersection.src_lanes.keys())
@@ -118,8 +115,14 @@ class GraphBasedSimEnv(gym.Env):
         next_state = self.encode_state(vehicles)
         terminal = self.sim.status != "RUNNING"
         if terminal and self.sim.status == "DEADLOCK":
-            waiting_time_sum += DEADLOCK_PENALTY
+            waiting_time_sum += self.DEADLOCK_PENALTY
         return next_state, waiting_time_sum, terminal, {}
+
+    def __calc_queue_size_scale(self, queue_size: int):
+        for idx, scale in enumerate(self.queue_size_scale):
+            if queue_size < scale:
+                return idx
+        return len(self.queue_size_scale)
 
     def __create_action_encoding(self, intersection: Intersection) -> int:
         return len(intersection.conflict_zones) + len(intersection.src_lanes) + 1
@@ -142,19 +145,19 @@ class GraphBasedSimEnv(gym.Env):
             n_states *= len(cz_ids) + 1
         
         # number of (not left) vehicles in each source lane
-        k = len(self.sim.intersection.src_lanes)
-        self.queue_sizes_max_no = math.comb(MAX_VEHICLE_NUM + k, k)
-        n_states *= self.queue_sizes_max_no
-
-        self.queue_sizes_no_map: Dict[Tuple[int], int] = dict()
-        self.queue_sizes_no_inv: Dict[int, Tuple[int]] = dict()
-        partitions = gen_int_partition(MAX_VEHICLE_NUM, len(self.sim.intersection.src_lanes))
-
-        for i, p in enumerate(partitions):
-            self.queue_sizes_no_map[p] = i
-            self.queue_sizes_no_inv[i] = p
+        n_states *= (len(self.queue_size_scale) + 1) ** len(self.sorted_src_lane_ids)
 
         return n_states
+
+    def is_invalid_state(self, state: int):
+        state = self.decode_state(state)
+        D = dict()
+        for pos in state["vehicle_positions"]:
+            D[(pos["type"], pos["id"])] = (pos["waiting"], pos["next_pos"])
+        for (_, _id), (is_waiting, next_pos) in D.items():
+            if is_waiting and ("cz", next_pos) in D:
+                return True
+        return False
 
     def encode_action(self, _id: str, is_cz: bool) -> int:
         if _id == "":
@@ -217,11 +220,10 @@ class GraphBasedSimEnv(gym.Env):
             trans = self.trans_per_src_lane[src_lane_id]
             state = state * (len(trans) + 1) + src_lane_state[src_lane_id]
 
-        queue_size_list = []
         for src_lane_id in self.sorted_src_lane_ids:
             queue_size = queue_size_per_src_lane[src_lane_id]
-            queue_size_list.append(queue_size)
-        state = state * self.queue_sizes_max_no + self.queue_sizes_no_map[tuple(queue_size_list)]
+            scale = self.__calc_queue_size_scale(queue_size)
+            state = state * (len(self.queue_size_scale) + 1) + scale
 
         return state
 
@@ -232,10 +234,11 @@ class GraphBasedSimEnv(gym.Env):
             "vehicle_positions": []
         }
 
-        queue_size_tuple = self.queue_sizes_no_inv[state % self.queue_sizes_max_no]
-        state //= self.queue_sizes_max_no
-        for i, src_lane_id in enumerate(self.sorted_src_lane_ids):
-            res["queue_size_per_src_lane"][src_lane_id] = queue_size_tuple[i]
+        for src_lane_id in self.sorted_src_lane_ids[::-1]:
+            scale = state % (len(self.queue_size_scale) + 1)
+            state //= (len(self.queue_size_scale) + 1)
+            queue_size = 0 if scale == 0 else self.queue_size_scale[scale-1]
+            res["queue_size_per_src_lane"][src_lane_id] = queue_size
 
         for src_lane_id in self.sorted_src_lane_ids[::-1]:
             trans = self.trans_per_src_lane[src_lane_id]
@@ -246,7 +249,7 @@ class GraphBasedSimEnv(gym.Env):
                     "id": src_lane_id,
                     "type": "src",
                     "waiting": True,
-                    "next_cz": trans[lane_state - 1]
+                    "next_pos": trans[lane_state - 1]
                 })
             
         for cz_id in self.sorted_cz_ids[::-1]:
