@@ -111,11 +111,12 @@ class ProbabilisticEnv(gym.Env):
             color[v] = "g"
             for u in adj[v]:
                 if color[u] == "w":
-                    if not dfs(u):
+                    if dfs(u):
                         return True
                 elif color[u] == "g":
                     return True
             color[v] = "b"
+            return False
         for cz_id in self.sorted_cz_ids:
             if color[cz_id] == "w":
                 if dfs(cz_id):
@@ -221,6 +222,7 @@ class ProbabilisticEnv(gym.Env):
             next_pos = info.get("next_pos", "")
             if next_pos:
                 cost += 1
+            cost += info["queue_size"]
         for info in s_dec["cz_state"].values():
             next_pos = info.get("next_pos", "")
             if next_pos:

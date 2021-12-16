@@ -134,8 +134,8 @@ class GraphBasedSimEnv(gym.Env):
                 cz_2 = traj[idx + 1]
                 trans_per_cz_id[cz_1].add(cz_2)
             trans_per_cz_id[traj[-1]].add("$")
-        self.trans_per_cz_id: Dict[str, List[str]] = {k: list(s) for k, s in trans_per_cz_id.items()}
-        self.trans_per_src_lane: Dict[str, List[str]] = {k: list(s) for k, s in self.sim.intersection.src_lanes.items()}
+        self.trans_per_cz_id: Dict[str, List[str]] = {k: sorted(list(s)) for k, s in trans_per_cz_id.items()}
+        self.trans_per_src_lane: Dict[str, List[str]] = {k: sorted(list(s)) for k, s in self.sim.intersection.src_lanes.items()}
 
         # number of states of vehicle position
         n_states = 1
@@ -147,17 +147,32 @@ class GraphBasedSimEnv(gym.Env):
         # number of (not left) vehicles in each source lane
         n_states *= (len(self.queue_size_scale) + 1) ** len(self.sorted_src_lane_ids)
 
-        return n_states
+        n_outer_states = 0
+        outer_to_real_state = dict()
+        real_to_outer_state = dict()
+        for s in range(n_states):
+            if not self.__is_invalid_state(s):
+                outer_to_real_state[n_outer_states] = s
+                real_to_outer_state[s] = n_outer_states
+                n_outer_states += 1
+        self.outer_to_real_state: Dict[int, int] = outer_to_real_state
+        self.real_to_outer_state: Dict[int, int] = real_to_outer_state
 
-    def is_invalid_state(self, state: int):
-        state = self.decode_state(state)
+        return n_outer_states
+
+    def __is_invalid_state(self, real_state: int):
+        real_state = self.__decode_state(real_state)
         D = dict()
-        for pos in state["vehicle_positions"]:
+        for pos in real_state["vehicle_positions"]:
             D[(pos["type"], pos["id"])] = (pos["waiting"], pos["next_pos"])
         for (_, _id), (is_waiting, next_pos) in D.items():
             if is_waiting and ("cz", next_pos) in D:
                 return True
         return False
+
+    def is_invalid_state(self, state: int):
+        state = self.outer_to_real_state[state]
+        return self.__is_invalid_state(state)
 
     def encode_action(self, _id: str, is_cz: bool) -> int:
         if _id == "":
@@ -225,25 +240,25 @@ class GraphBasedSimEnv(gym.Env):
             scale = self.__calc_queue_size_scale(queue_size)
             state = state * (len(self.queue_size_scale) + 1) + scale
 
-        return state
+        return self.real_to_outer_state[state]
 
     @lru_cache(maxsize=1024)
-    def decode_state(self, state: int) -> Dict:
+    def __decode_state(self, real_state: int) -> Dict:
         res: Dict = {
             "queue_size_per_src_lane": {},
             "vehicle_positions": []
         }
 
         for src_lane_id in self.sorted_src_lane_ids[::-1]:
-            scale = state % (len(self.queue_size_scale) + 1)
-            state //= (len(self.queue_size_scale) + 1)
+            scale = real_state % (len(self.queue_size_scale) + 1)
+            real_state //= (len(self.queue_size_scale) + 1)
             queue_size = 0 if scale == 0 else self.queue_size_scale[scale-1]
             res["queue_size_per_src_lane"][src_lane_id] = queue_size
 
         for src_lane_id in self.sorted_src_lane_ids[::-1]:
             trans = self.trans_per_src_lane[src_lane_id]
-            lane_state = state % (len(trans) + 1)
-            state //= len(trans) + 1
+            lane_state = real_state % (len(trans) + 1)
+            real_state //= len(trans) + 1
             if lane_state > 0:
                 res["vehicle_positions"].append({
                     "id": src_lane_id,
@@ -254,8 +269,8 @@ class GraphBasedSimEnv(gym.Env):
             
         for cz_id in self.sorted_cz_ids[::-1]:
             trans = self.trans_per_cz_id[cz_id]
-            cz_state = state % (2 * (len(trans) + 1))
-            state //= 2 * (len(trans) + 1)
+            cz_state = real_state % (2 * (len(trans) + 1))
+            real_state //= 2 * (len(trans) + 1)
             is_waiting = cz_state % 2
             cz_state //= 2
             if cz_state > 0:
@@ -267,4 +282,8 @@ class GraphBasedSimEnv(gym.Env):
                 })
             
         return res  
+
+    def decode_state(self, state: int) -> Dict:
+        real_state = self.outer_to_real_state[state]
+        return self.__decode_state(real_state)
 
