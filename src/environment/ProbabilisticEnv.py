@@ -12,6 +12,8 @@ from simulator.intersection import Intersection
 TRAFFIC_DENSITY = 0.05
 
 class ProbabilisticEnv(gym.Env):
+    TERMINAL_STATE = 0
+    DEADLOCK_COST = 1e9
     def __init__(self, intersection: Intersection, queue_size_scale: Tuple[int] = (1,)):
         super(ProbabilisticEnv, self).__init__()
         self.intersection = intersection
@@ -22,6 +24,11 @@ class ProbabilisticEnv(gym.Env):
 
         self.state_space_size = self.__create_state_encoding(intersection)
         self.action_space_size = self.__create_action_encoding(intersection)
+
+        self.deadlock_state_table = [False for _ in range(self.state_space_size)]
+        for s in range(self.state_space_size):
+            if self.__is_deadlock_state(self.outer_to_real_state[s]):
+                self.deadlock_state_table[s] = True
 
         self.observation_space = spaces.Discrete(self.state_space_size)
         self.action_space = spaces.Discrete(self.action_space_size)
@@ -89,6 +96,30 @@ class ProbabilisticEnv(gym.Env):
         for _, info in state_dict["cz_state"].items():
             if info.get("waiting", False) and info["next_pos"] in occupied_cz:
                 return True
+        return False
+
+    def __is_deadlock_state(self, real_state: int) -> bool:
+        state_dict = self.__decode_state(real_state)
+        adj = {cz_id: [] for cz_id in self.sorted_cz_ids}
+        for cz_id, info in state_dict["cz_state"].items():
+            next_pos = info.get("next_pos", "")
+            if next_pos and next_pos != "$":
+                adj[cz_id].append(next_pos)
+        
+        color = {cz_id: "w" for cz_id in self.sorted_cz_ids}
+        def dfs(v: str):
+            color[v] = "g"
+            for u in adj[v]:
+                if color[u] == "w":
+                    if not dfs(u):
+                        return True
+                elif color[u] == "g":
+                    return True
+            color[v] = "b"
+        for cz_id in self.sorted_cz_ids:
+            if color[cz_id] == "w":
+                if dfs(cz_id):
+                    return True
         return False
 
     @lru_cache(maxsize=128)
@@ -177,6 +208,10 @@ class ProbabilisticEnv(gym.Env):
         '''
         return a list of 3-tuple (prob, next_state, cost)
         '''
+        if s == self.TERMINAL_STATE:
+            return [(1.0, self.TERMINAL_STATE, 0)]
+        elif self.deadlock_state_table[s]:
+            return [(1.0, self.TERMINAL_STATE, self.DEADLOCK_COST)]
         res: List[Tuple[float, int, int]] = []
         s_dec = self.decode_state(s)
         a_dec = self.decode_action(a)
@@ -240,8 +275,10 @@ class ProbabilisticEnv(gym.Env):
             else:
                 explore_src(i, prob, sp) ##
 
-
         def explore_src(i: int, prob: float, sp: Dict):
+            if i == len(self.sorted_src_lane_ids):
+                explore_cz(0, prob, sp)
+                return
             src_lane_id = self.sorted_src_lane_ids[i]
             if not sp["src_lane_state"][src_lane_id].get("waiting", False):
                 # change to waiting if a vehicle in queue arrived
@@ -263,13 +300,13 @@ class ProbabilisticEnv(gym.Env):
                             # Case 1: queue size does not decreases
                             if not math.isclose(0.0, 1 - decrease_prob):
                                 #print(f"src {src_lane_id} not decrease and wait for {next_cz}")
-                                explore_queue(i + 1, prob * (1 - decrease_prob) * (1 / len(trans)), sp) ##
+                                explore_src(i + 1, prob * (1 - decrease_prob) * (1 / len(trans)), sp) ##
                             
                             # Case 2: queue size decreases
                             if not math.isclose(0.0, decrease_prob):
                                 sp["src_lane_state"][src_lane_id]["queue_size"] = next_queue_size
                                 #print(f"src {src_lane_id} decreases and wait for {next_cz}")
-                                explore_queue(i + 1, prob * decrease_prob * (1 / len(trans)), sp) ##
+                                explore_src(i + 1, prob * decrease_prob * (1 / len(trans)), sp) ##
                                 sp["src_lane_state"][src_lane_id]["queue_size"] = cur_queue_size
 
                             del sp["src_lane_state"][src_lane_id]["next_pos"]
@@ -278,13 +315,13 @@ class ProbabilisticEnv(gym.Env):
                     # For the blocked transitions
                     #print(f"src {src_lane_id} unchanged")
                     if avail_trans_cnt < len(trans):
-                        explore_queue(i + 1, prob * (1.0 - avail_trans_cnt / len(trans)), sp) ##
+                        explore_src(i + 1, prob * (1.0 - avail_trans_cnt / len(trans)), sp) ##
                 else:
                     # queue size = 0
                     #print(f"src {src_lane_id} unchanged")
-                    explore_queue(i + 1, prob, sp) ##
+                    explore_src(i + 1, prob, sp) ##
             else:
-                explore_queue(i + 1, prob, sp)
+                explore_src(i + 1, prob, sp)
 
 
         action_type: str = ""
@@ -303,7 +340,7 @@ class ProbabilisticEnv(gym.Env):
             del state_dict[action_type][a_dec["id"]]["next_pos"]
 
             if next_pos == "$":
-                explore_queue(0, 1.0, state_dict)
+                explore_src(0, 1.0, state_dict)
             else:
                 trans = self.trans_per_cz_id[next_pos]
                 for next2_pos in trans:
@@ -321,9 +358,9 @@ class ProbabilisticEnv(gym.Env):
                     for _, info in state_dict["cz_state"].items():
                         if info.get("waiting", False):
                             info["waiting"] = False 
-                    explore_queue(0, 1.0 / len(trans), state_dict)
+                    explore_src(0, 1.0 / len(trans), state_dict)
         else:
-            explore_queue(0, 1.0, state_dict)
+            explore_src(0, 1.0, state_dict)
 
         return res
 

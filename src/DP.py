@@ -7,7 +7,7 @@ from environment import ProbabilisticEnv
 from simulator import intersection
 from utility import get_4cz_intersection
 
-def value_iteration(env: ProbabilisticEnv, theta=0.01, discount_factor=1.0):
+def value_iteration(env: ProbabilisticEnv, theta=1e-3, discount_factor=0.9):
     def one_step_lookahead(state, V):
         A = np.zeros(env.action_space_size)
         for a in range(env.action_space_size):
