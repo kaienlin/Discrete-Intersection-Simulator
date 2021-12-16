@@ -196,7 +196,7 @@ class GraphBasedSimEnv(gym.Env):
         cz_state = {cz_id: 0 for cz_id in self.sim.intersection.conflict_zones}
         src_lane_state = {src_lane_id: 0 for src_lane_id in self.sim.intersection.src_lanes}
         for veh in vehicles:
-            if veh.idx_on_traj == -1 and veh.state != VehicleState.WAITING:
+            if veh.idx_on_traj == -1 and veh.state == VehicleState.BLOCKED:
                 queue_size_per_src_lane[veh.src_lane_id] += 1
             elif veh.state != VehicleState.LEFT:
                 veh_pos = veh.get_cur_cz()
