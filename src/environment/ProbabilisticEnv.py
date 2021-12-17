@@ -30,6 +30,11 @@ class ProbabilisticEnv(gym.Env):
             if self.__is_deadlock_state(self.outer_to_real_state[s]):
                 self.deadlock_state_table[s] = True
 
+        self.P = tuple([
+            tuple([self.get_transitions(s, a) for a in range(self.action_space_size)])
+            for s in range(self.state_space_size
+        )])
+
         self.observation_space = spaces.Discrete(self.state_space_size)
         self.action_space = spaces.Discrete(self.action_space_size)
 
@@ -122,6 +127,16 @@ class ProbabilisticEnv(gym.Env):
                 if dfs(cz_id):
                     return True
         return False
+
+    def encode_action(self, action: Dict) -> int:
+        if "type" not in action:
+            return 0
+        num_src_lane = len(self.sorted_src_lane_ids)
+        num_cz = len(self.sorted_src_lane_ids)
+        if action["type"] == "src":
+            return 1 + self.sorted_src_lane_ids.index(action["id"])
+        if action["type"] == "cz":
+            return 1 + num_src_lane + self.sorted_cz_ids.index(action["id"])
 
     @lru_cache(maxsize=128)
     def decode_action(self, action: int) -> Dict:
@@ -341,6 +356,13 @@ class ProbabilisticEnv(gym.Env):
             del state_dict[action_type][a_dec["id"]]["waiting"]
             del state_dict[action_type][a_dec["id"]]["next_pos"]
 
+            for _, info in state_dict["src_lane_state"].items():
+                if info.get("waiting", False):
+                    cost = 0
+            for _, info in state_dict["cz_state"].items():
+                if info.get("waiting", False):
+                    cost = 0
+
             if next_pos == "$":
                 explore_src(0, 1.0, state_dict)
             else:
@@ -351,14 +373,14 @@ class ProbabilisticEnv(gym.Env):
                         "next_pos": next2_pos
                     })
                     for _, info in state_dict["src_lane_state"].items():
-                        if info.get("waiting", False):
+                        if info.get("waiting", False) and info.get("next_pos", "") == next_pos:
                             del info["waiting"]
                             del info["next_pos"]
                             if info["queue_size"] == 0:
                                 info["queue_size"] += 1
 
                     for _, info in state_dict["cz_state"].items():
-                        if info.get("waiting", False):
+                        if info.get("waiting", False) and info.get("next_pos", "") == next_pos:
                             info["waiting"] = False 
                     explore_src(0, 1.0 / len(trans), state_dict)
         else:
