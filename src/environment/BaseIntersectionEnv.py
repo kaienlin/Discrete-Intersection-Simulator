@@ -4,7 +4,6 @@ import gym
 from gym import spaces
 from typing import Tuple, Dict, Set, List
 from functools import lru_cache
-import copy, math, sys
 from dataclasses import dataclass, field
 
 from simulator.intersection import Intersection
@@ -38,7 +37,7 @@ class BaseIntersectionEnv(gym.Env):
                     print(f"vehicle_state={src_lane_state.vehicle_state: <7}, ", end="")
                     print(f"next_position={src_lane_state.next_position: <7}", end="")
                 print("")
-                
+
             print("2. Conflict zone states:")
             for cz_id, cz_state in self.cz_state.items():
                 if cz_state.next_position:
@@ -46,7 +45,7 @@ class BaseIntersectionEnv(gym.Env):
                     print(f"vehicle_state={cz_state.vehicle_state: <7}, ", end="")
                     print(f"next_position={cz_state.next_position: <7}", end="")
                     print("")
-    
+
     def __init__(
         self,
         intersection: Intersection,
@@ -65,6 +64,9 @@ class BaseIntersectionEnv(gym.Env):
 
         self.state_space_size: int = self._create_state_encoding()
         self.action_space_size: int = self._create_action_encoding()
+
+        self.observation_space = spaces.Discrete(self.state_space_size)
+        self.action_space = spaces.Discrete(self.action_space_size)
 
     def _create_state_encoding(self) -> int:
         # find all valid transitions
@@ -92,7 +94,7 @@ class BaseIntersectionEnv(gym.Env):
             field_width = len(self.vehicle_states_in_cz) * len(trans) + 1
             n_raw_states *= field_width
             self.cz_field_width[cz_id] = field_width
-        
+
         # fields encoding the queue sizes of the source lanes
         n_raw_states *= (len(self.queue_size_scale) + 1) ** len(self.sorted_src_lane_ids)
 
@@ -107,7 +109,7 @@ class BaseIntersectionEnv(gym.Env):
                 n_compressed_states += 1
         self.compressed_to_raw_state: Dict[int, int] = compressed_to_raw_state
         self.raw_to_compressed_state: Dict[int, int] = raw_to_compressed_state
-        
+
         return n_compressed_states
 
     def _create_action_encoding(self) -> int:
@@ -129,7 +131,6 @@ class BaseIntersectionEnv(gym.Env):
                 and cz_state.next_position in occupied_cz:
                 return True
         return False
-
 
     def _discretize_queue_size(self, queue_size: int) -> int:
         for idx, threshold in enumerate(self.queue_size_scale):
@@ -155,20 +156,20 @@ class BaseIntersectionEnv(gym.Env):
                 state += trans.index(next_pos) * len(self.vehicle_states_in_cz)
                 state += self.vehicle_states_in_cz.index(veh_state)
                 state += 1
-        
+
         for src_lane_id in self.sorted_src_lane_ids:
             state *= self.src_lane_field_width[src_lane_id]
             trans = self.transitions_of_src_lane[src_lane_id]
             next_pos = decoded_state.src_lane_state[src_lane_id].next_position
             if next_pos:
                 state += trans.index(next_pos) + 1
-        
+
         for src_lane_id in self.sorted_src_lane_ids:
             state *= len(self.queue_size_scale) + 1
             queue_size = decoded_state.src_lane_state[src_lane_id].queue_size
             discretized_queue_size = self._discretize_queue_size(queue_size)
             state += discretized_queue_size
-        
+
         return self.raw_to_compressed_state[state]
 
     def make_decoded_state(self) -> DecodedState:
@@ -193,7 +194,7 @@ class BaseIntersectionEnv(gym.Env):
             if lane_state > 0:
                 res.src_lane_state[src_lane_id].vehicle_state = "waiting"
                 res.src_lane_state[src_lane_id].next_position = trans[lane_state - 1]
-            
+
         for cz_id in self.sorted_cz_ids[::-1]:
             trans = self.transitions_of_cz[cz_id]
             field_width = self.cz_field_width[cz_id]
