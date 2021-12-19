@@ -11,19 +11,22 @@ from simulator.intersection import Intersection
 class BaseIntersectionEnv(gym.Env):
     TERMINAL_STATE = 0
     DEADLOCK_COST = 1e9
+    vehicle_states_in_cz: Tuple[str] = ("waiting", "blocked", "moving")
+    vehicle_states_in_src: Tuple[str] = ("waiting", "blocked")
 
     def __init__(
         self,
         intersection: Intersection,
         queue_size_scale: Tuple[int] = (1,),
-        vehicle_states_in_cz: Tuple[str] = ("waiting", "blocked", "moving"),
         traffic_density: float = 0.05
     ):
         super().__init__()
         self.intersection: Intersection = intersection
         self.queue_size_scale: Tuple[int] = queue_size_scale
-        self.vehicle_states_in_cz: Tuple[str] = vehicle_states_in_cz
         self.traffic_density: float = traffic_density
+
+        if len(queue_size_scale) == 0 or queue_size_scale[0] != 1:
+            raise Exception("BaseIntersectionEnv: Invalid queue size scale")
 
         self.sorted_src_lane_ids: List[str] = sorted(intersection.src_lanes.keys())
         self.sorted_cz_ids: List[str] = sorted(intersection.conflict_zones)
@@ -57,7 +60,7 @@ class BaseIntersectionEnv(gym.Env):
         self.src_lane_field_width: Dict[str, int] = {}
 
         for src_lane_id, associated_czs in sorted(self.intersection.src_lanes.items()):
-            field_width = len(associated_czs) + 1
+            field_width = len(self.vehicle_states_in_src) * len(associated_czs) + 1
             n_raw_states *= field_width
             self.src_lane_field_width[src_lane_id] = field_width
 
@@ -96,6 +99,8 @@ class BaseIntersectionEnv(gym.Env):
         for _, src_lane_state in decoded_state.src_lane_state.items():
             if src_lane_state.vehicle_state == "waiting" \
                 and src_lane_state.next_position in occupied_cz:
+                return True
+            if src_lane_state.vehicle_state == "" and src_lane_state.queue_size > 0:
                 return True
         for _, cz_state in decoded_state.cz_state.items():
             if cz_state.vehicle_state == "waiting" \
@@ -165,9 +170,12 @@ class BaseIntersectionEnv(gym.Env):
         for src_lane_id in self.sorted_src_lane_ids:
             state *= self.src_lane_field_width[src_lane_id]
             trans = self.transitions_of_src_lane[src_lane_id]
+            veh_state = decoded_state.src_lane_state[src_lane_id].vehicle_state
             next_pos = decoded_state.src_lane_state[src_lane_id].next_position
             if next_pos:
-                state += trans.index(next_pos) + 1
+                state += trans.index(next_pos) * len(self.vehicle_states_in_src)
+                state += self.vehicle_states_in_src.index(veh_state)
+                state += 1
 
         for src_lane_id in self.sorted_src_lane_ids:
             state *= len(self.queue_size_scale) + 1
@@ -197,8 +205,11 @@ class BaseIntersectionEnv(gym.Env):
             lane_state = raw_state % self.src_lane_field_width[src_lane_id]
             raw_state //= self.src_lane_field_width[src_lane_id]
             if lane_state > 0:
-                res.src_lane_state[src_lane_id].vehicle_state = "waiting"
-                res.src_lane_state[src_lane_id].next_position = trans[lane_state - 1]
+                lane_state -= 1
+                veh_state = self.vehicle_states_in_src[lane_state % len(self.vehicle_states_in_src)]
+                lane_state //= len(self.vehicle_states_in_src)
+                res.src_lane_state[src_lane_id].vehicle_state = veh_state
+                res.src_lane_state[src_lane_id].next_position = trans[lane_state]
 
         for cz_id in self.sorted_cz_ids[::-1]:
             trans = self.transitions_of_cz[cz_id]
