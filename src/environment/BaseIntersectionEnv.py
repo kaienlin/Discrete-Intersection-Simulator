@@ -12,40 +12,6 @@ class BaseIntersectionEnv(gym.Env):
     TERMINAL_STATE = 0
     DEADLOCK_COST = 1e9
 
-    @dataclass
-    class SrcLaneState:
-        vehicle_state: str = ""
-        next_position: str = ""
-        queue_size: int = 0
-
-    @dataclass
-    class CzState:
-        vehicle_state: str = ""
-        next_position: str = ""
-
-    @dataclass
-    class DecodedState:
-        src_lane_state: Dict[str, BaseIntersectionEnv.SrcLaneState] = field(default_factory=dict)
-        cz_state: Dict[str, BaseIntersectionEnv.CzState] = field(default_factory=dict)
-
-        def print(self) -> None:
-            print("1. Source lane states:")
-            for src_lane_id, src_lane_state in self.src_lane_state.items():
-                print(f"  {src_lane_id}: ", end="")
-                print(f"queue_size={src_lane_state.queue_size: <7} ", end="")
-                if src_lane_state.next_position:
-                    print(f"vehicle_state={src_lane_state.vehicle_state: <7}, ", end="")
-                    print(f"next_position={src_lane_state.next_position: <7}", end="")
-                print("")
-
-            print("2. Conflict zone states:")
-            for cz_id, cz_state in self.cz_state.items():
-                if cz_state.next_position:
-                    print(f"  {cz_id}: ", end="")
-                    print(f"vehicle_state={cz_state.vehicle_state: <7}, ", end="")
-                    print(f"next_position={cz_state.next_position: <7}", end="")
-                    print("")
-
     def __init__(
         self,
         intersection: Intersection,
@@ -53,7 +19,7 @@ class BaseIntersectionEnv(gym.Env):
         vehicle_states_in_cz: Tuple[str] = ("waiting", "blocked", "moving"),
         traffic_density: float = 0.05
     ):
-        super(BaseIntersectionEnv, self).__init__()
+        super().__init__()
         self.intersection: Intersection = intersection
         self.queue_size_scale: Tuple[int] = queue_size_scale
         self.vehicle_states_in_cz: Tuple[str] = vehicle_states_in_cz
@@ -67,6 +33,11 @@ class BaseIntersectionEnv(gym.Env):
 
         self.observation_space = spaces.Discrete(self.state_space_size)
         self.action_space = spaces.Discrete(self.action_space_size)
+
+        self.deadlock_state_table = [False for _ in range(self.state_space_size)]
+        for s in range(self.state_space_size):
+            if self.is_deadlock_state(s):
+                self.deadlock_state_table[s] = True
 
     def _create_state_encoding(self) -> int:
         # find all valid transitions
@@ -131,6 +102,40 @@ class BaseIntersectionEnv(gym.Env):
                 and cz_state.next_position in occupied_cz:
                 return True
         return False
+
+    def is_invalid_state(self, state: int) -> bool:
+        raw_state = self.compressed_to_raw_state[state]
+        return self._is_invalid_raw_state(raw_state)
+
+    def _is_deadlock_raw_state(self, raw_state: int) -> bool:
+        decoded_state: BaseIntersectionEnv.DecodedState = self._decode_raw_state(raw_state)
+        adj = {cz_id: [] for cz_id in self.sorted_cz_ids}
+        for cz_id, cz_state in decoded_state.cz_state.items():
+            next_pos = cz_state.next_position
+            if next_pos and next_pos != "$":
+                adj[cz_id].append(next_pos)
+
+        color = {cz_id: "w" for cz_id in self.sorted_cz_ids}
+        def dfs(v: str):
+            color[v] = "g"
+            for u in adj[v]:
+                if color[u] == "w":
+                    if dfs(u):
+                        return True
+                elif color[u] == "g":
+                    return True
+            color[v] = "b"
+            return False
+
+        for cz_id in self.sorted_cz_ids:
+            if color[cz_id] == "w":
+                if dfs(cz_id):
+                    return True
+
+        return False
+
+    def is_deadlock_state(self, state: int) -> bool:
+        return self.deadlock_state_table[state]
 
     def _discretize_queue_size(self, queue_size: int) -> int:
         for idx, threshold in enumerate(self.queue_size_scale):
@@ -214,3 +219,67 @@ class BaseIntersectionEnv(gym.Env):
         raw_state = self.compressed_to_raw_state[state]
         return self._decode_raw_state(raw_state)
 
+    def encode_action(self, decoded_action: DecodedAction) -> int:
+        if decoded_action.type == "":
+            return 0
+        num_src_lane = len(self.sorted_src_lane_ids)
+        if decoded_action.type == "src":
+            return 1 + self.sorted_src_lane_ids.index(decoded_action.id)
+        if decoded_action.type == "cz":
+            return 1 + num_src_lane + self.sorted_cz_ids.index(decoded_action.ids)
+
+    @lru_cache(maxsize=16)
+    def decode_action(self, action: int) -> DecodedAction:
+        if action == 0:
+            return BaseIntersectionEnv.DecodedAction()
+        num_src_lane = len(self.sorted_src_lane_ids)
+        num_cz = len(self.sorted_src_lane_ids)
+        if 1 <= action <= num_src_lane:
+            return BaseIntersectionEnv.DecodedAction(type="src", id=self.sorted_src_lane_ids[action - 1])
+        elif num_src_lane + 1 <= action <= num_cz + num_src_lane:
+            return BaseIntersectionEnv.DecodedAction(type="cz", id=self.sorted_cz_ids[action - num_src_lane - 1])
+        else:
+            raise Exception("BaseIntersectionEnv.decode_action: Invalid action")
+
+
+    @dataclass
+    class SrcLaneState:
+        vehicle_state: str = ""
+        next_position: str = ""
+        queue_size: int = 0
+
+    @dataclass
+    class CzState:
+        vehicle_state: str = ""
+        next_position: str = ""
+
+    @dataclass
+    class DecodedState:
+        src_lane_state: Dict[str, BaseIntersectionEnv.SrcLaneState] = field(default_factory=dict)
+        cz_state: Dict[str, BaseIntersectionEnv.CzState] = field(default_factory=dict)
+
+        def print(self) -> None:
+            print("1. Source lane states:")
+            for src_lane_id, src_lane_state in self.src_lane_state.items():
+                print(f"  {src_lane_id}: ", end="")
+                print(f"queue_size={src_lane_state.queue_size: <7} ", end="")
+                if src_lane_state.next_position:
+                    print(f"vehicle_state={src_lane_state.vehicle_state: <7}, ", end="")
+                    print(f"next_position={src_lane_state.next_position: <7}", end="")
+                print("")
+
+            print("2. Conflict zone states:")
+            for cz_id, cz_state in self.cz_state.items():
+                if cz_state.next_position:
+                    print(f"  {cz_id}: ", end="")
+                    print(f"vehicle_state={cz_state.vehicle_state: <7}, ", end="")
+                    print(f"next_position={cz_state.next_position: <7}", end="")
+                    print("")
+
+    @dataclass
+    class DecodedAction:
+        type: str = ""
+        id: str = ""
+
+        def print(self) -> None:
+            print(f"Action: type={self.type: <7}, id={self.id: <7}")
