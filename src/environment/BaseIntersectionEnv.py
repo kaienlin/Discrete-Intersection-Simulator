@@ -237,7 +237,7 @@ class BaseIntersectionEnv(gym.Env):
         if decoded_action.type == "src":
             return 1 + self.sorted_src_lane_ids.index(decoded_action.id)
         if decoded_action.type == "cz":
-            return 1 + num_src_lane + self.sorted_cz_ids.index(decoded_action.ids)
+            return 1 + num_src_lane + self.sorted_cz_ids.index(decoded_action.id)
 
     @lru_cache(maxsize=16)
     def decode_action(self, action: int) -> DecodedAction:
