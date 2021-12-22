@@ -1,78 +1,30 @@
-import gym
-from gym import spaces
 import copy
-from typing import Iterable, Set, Dict, List, Tuple
-from functools import lru_cache
+from typing import Iterable, Set, Tuple
 
-from simulator.intersection import Intersection
 from simulator.simulation import Simulator
 from simulator.vehicle import Vehicle, VehicleState
-
-def gen_int_partition(n: int, k: int):
-    res: Set[Tuple[int]] = set()
-    def __gen(sum: int, L: List[int]) -> None:
-        if len(L) == k:
-            res.add(tuple(L))
-            return
-        for i in range(0, n - sum + 1):
-            L.append(i)
-            __gen(sum + i, L)
-            L.pop()
-    __gen(0, [])
-    return res             
-        
+from environment.BaseIntersectionEnv import BaseIntersectionEnv
  
-class GraphBasedSimEnv(gym.Env):
-    '''
-    **STATE**
-    The state space consists of the following elements:
-        1. all possible combinations of "transitions". A transition is a
-           pair (src, dst) where:
-                + src can be a source lane or a conflict zone
-                + dst can be a conflict zone or "$" (terminal)
-
-        2. the number of vehicles queued in each source lane, which is
-           represented as a n-tuple where n is the number of source lanes.
-           The granularity of the queue size can be specified to control
-           the size of the state space.
-    
-    **ACTION**
-    The action space consists of the following elements:
-        1. a source lane or a conflict zone where the vehicle (if exists) in
-           the position is allowed to move to its destination in the previously
-           returned state.
-
-    **COST**
-    The cost is a non-negative integer the waiting time increased between the
-    previous and the current state.
-    '''
-    DEADLOCK_PENALTY = 1000000000
+class GraphBasedSimEnv(BaseIntersectionEnv):
     def __init__(self, sim: Simulator, queue_size_scale: Tuple[int] = (1,)):
-        super(GraphBasedSimEnv, self).__init__()
-        self.sim = sim
-        self.queue_size_scale = queue_size_scale
+        super().__init__(
+            sim.intersection,
+            queue_size_scale=queue_size_scale
+        )
+        self.sim: Simulator = sim
 
-        # The sorted ids are for state encoding
-        self.sorted_src_lane_ids = sorted(self.sim.intersection.src_lanes.keys())
-        self.sorted_cz_ids = sorted(self.sim.intersection.conflict_zones)
-        
-        # compute the size of the state space and the action space
-        self.state_space_size = self.__create_state_encoding(sim.intersection)
-        self.action_space_size = self.__create_action_encoding(sim.intersection)
-
-        # For following gym interface
-        self.observation_space = spaces.Discrete(self.state_space_size)
-        self.action_space = spaces.Discrete(self.action_space_size)
-
-        # simulation-related object for calculating cost
+        # simulation-related objects for calculating cost
         self.prev_timestamp: int = 0
         self.prev_vehicles = None
         self.prev_idle_veh: Set[str] = set()
 
-    def reset(self):
+    def reset(self, new_sim=None):
         '''
         reset the environment and return a initial state
         '''
+        if new_sim is not None:
+            self.sim = new_sim
+
         self.sim.reset_simulation()
         self.sim.run()
 
@@ -81,7 +33,7 @@ class GraphBasedSimEnv(gym.Env):
         self.prev_vehicles = copy.deepcopy(vehicles)
         self.prev_idle_veh = set([veh.id for veh in vehicles if self.__is_idle_state(veh.state)])
 
-        return self.encode_state(vehicles)
+        return self.__encode_state_from_vehicles(vehicles)
 
     def print_state(self, t, vehicles):
         print(f"State at time {t}")
@@ -91,15 +43,13 @@ class GraphBasedSimEnv(gym.Env):
     def render(self):
         self.print_state(self.prev_timestamp, self.prev_vehicles)
 
-    def __is_idle_state(self, state: VehicleState) -> bool:
-        return state == VehicleState.WAITING or state == VehicleState.BLOCKED
-
     def step(self, action: int):
-        veh_id = self.decode_action_to_veh_id(action)
+        veh_id = self.__decode_action_to_vehicle_id(action)
         self.sim.simulation_step_act(veh_id)
 
         waiting_time_sum = 0
         vehicles = []
+
         while True:
             timestamp, vehicles = self.sim.simulation_step_report()
             num_waiting = len(self.prev_idle_veh) - (1 if veh_id in self.prev_idle_veh else 0)
@@ -112,178 +62,62 @@ class GraphBasedSimEnv(gym.Env):
             if len([veh.id for veh in vehicles if veh.state == VehicleState.WAITING]) > 0 or self.sim.status != "RUNNING":
                 break
 
-        next_state = self.encode_state(vehicles)
+        next_state = self.__encode_state_from_vehicles(vehicles)
         terminal = self.sim.status != "RUNNING"
         if terminal and self.sim.status == "DEADLOCK":
-            waiting_time_sum += self.DEADLOCK_PENALTY
+            assert(self.is_deadlock_state(next_state))
+            waiting_time_sum += self.DEADLOCK_COST
+
         return next_state, waiting_time_sum, terminal, {}
 
-    def __calc_queue_size_scale(self, queue_size: int):
-        for idx, scale in enumerate(self.queue_size_scale):
-            if queue_size < scale:
-                return idx
-        return len(self.queue_size_scale)
+    def __is_idle_state(self, state: VehicleState) -> bool:
+        return state == VehicleState.WAITING or state == VehicleState.BLOCKED
 
-    def __create_action_encoding(self, intersection: Intersection) -> int:
-        return len(intersection.conflict_zones) + len(intersection.src_lanes) + 1
+    def __is_frontmost_vehicle(self, vehicle: Vehicle) -> bool:
+        return self.sim.is_frontmost_vehicle(vehicle)
 
-    def __create_state_encoding(self, intersection: Intersection) -> int:
-        trans_per_cz_id: Dict[str, Set[str]] = {cz_id: set() for cz_id in intersection.conflict_zones}
-        for traj in intersection.trajectories:
-            for idx, cz_1 in enumerate(traj[:-1]):
-                cz_2 = traj[idx + 1]
-                trans_per_cz_id[cz_1].add(cz_2)
-            trans_per_cz_id[traj[-1]].add("$")
-        self.trans_per_cz_id: Dict[str, List[str]] = {k: sorted(list(s)) for k, s in trans_per_cz_id.items()}
-        self.trans_per_src_lane: Dict[str, List[str]] = {k: sorted(list(s)) for k, s in self.sim.intersection.src_lanes.items()}
-
-        # number of states of vehicle position
-        n_states = 1
-        for associated_czs in intersection.src_lanes.values():
-            n_states *= 2 * (len(associated_czs) + 1)
-        for cz_ids in trans_per_cz_id.values():
-            n_states *= len(cz_ids) + 1
-        
-        # number of (not left) vehicles in each source lane
-        n_states *= (len(self.queue_size_scale) + 1) ** len(self.sorted_src_lane_ids)
-
-        n_outer_states = 0
-        outer_to_real_state = dict()
-        real_to_outer_state = dict()
-        for s in range(n_states):
-            if not self.__is_invalid_state(s):
-                outer_to_real_state[n_outer_states] = s
-                real_to_outer_state[s] = n_outer_states
-                n_outer_states += 1
-        self.outer_to_real_state: Dict[int, int] = outer_to_real_state
-        self.real_to_outer_state: Dict[int, int] = real_to_outer_state
-
-        return n_outer_states
-
-    def __is_invalid_state(self, real_state: int):
-        real_state = self.__decode_state(real_state)
-        D = dict()
-        for pos in real_state["vehicle_positions"]:
-            D[(pos["type"], pos["id"])] = (pos["waiting"], pos["next_pos"])
-        for (_, _id), (is_waiting, next_pos) in D.items():
-            if is_waiting and ("cz", next_pos) in D:
-                return True
-        return False
-
-    def is_invalid_state(self, state: int):
-        state = self.outer_to_real_state[state]
-        return self.__is_invalid_state(state)
-
-    def encode_action(self, _id: str, is_cz: bool) -> int:
-        if _id == "":
-            return 0
-        num_src_lane = len(self.sorted_src_lane_ids)
-        if is_cz:
-            return self.sorted_cz_ids.index(_id) + num_src_lane + 1
-        else:
-            return self.sorted_src_lane_ids.index(_id) + 1
-        
-    def decode_action_to_veh_id(self, action: int) -> str:
-        if action == 0:
-            return ""
-        num_src_lane = len(self.sorted_src_lane_ids)
-        num_cz = len(self.sorted_cz_ids)
-        if 1 <= action <= num_src_lane:
-            veh = self.sim.get_waiting_veh_of_src_lane(self.sorted_src_lane_ids[action - 1])
-            return "" if veh is None else veh.id
-        elif num_src_lane + 1 <= action <= num_cz + num_src_lane:
-            veh = self.sim.get_waiting_veh_on_cz(self.sorted_cz_ids[action - num_src_lane - 1])
-            return "" if veh is None else veh.id
-
-    @lru_cache(maxsize=128)
-    def decode_action(self, action: int) -> Dict:
-        if action == 0:
-            return {}
-        num_src_lane = len(self.sorted_src_lane_ids)
-        num_cz = len(self.sorted_src_lane_ids)
-        if 1 <= action <= num_src_lane:
-            return {"type": "src", "pos": f"{self.sorted_src_lane_ids[action - 1]}"}
-        elif num_src_lane + 1 <= action <= num_cz + num_src_lane:
-            return {"type": "cz", "pos": f"{self.sorted_cz_ids[action - num_src_lane - 1]}"}
-
-    def encode_state(self, vehicles: Iterable[Vehicle]) -> int:
-        queue_size_per_src_lane = {src_lane_id: 0 for src_lane_id in self.sim.intersection.src_lanes}
-        cz_state = {cz_id: 0 for cz_id in self.sim.intersection.conflict_zones}
-        src_lane_state = {src_lane_id: 0 for src_lane_id in self.sim.intersection.src_lanes}
+    def __encode_state_from_vehicles(self, vehicles: Iterable[Vehicle]) -> int:
+        decoded_state = self.make_decoded_state()
         for veh in vehicles:
-            if veh.idx_on_traj == -1 and veh.state == VehicleState.BLOCKED:
-                queue_size_per_src_lane[veh.src_lane_id] += 1
+            if veh.get_cur_cz() == "^":
+                if self.__is_frontmost_vehicle(veh):
+                    decoded_state.src_lane_state[veh.src_lane_id].next_position = veh.get_next_cz()
+                    if veh.state == VehicleState.WAITING:
+                        decoded_state.src_lane_state[veh.src_lane_id].vehicle_state = "waiting"
+                    elif veh.state == VehicleState.BLOCKED:
+                        decoded_state.src_lane_state[veh.src_lane_id].vehicle_state = "blocked"
+                    else:
+                        raise Exception("GraphBasedSimEnv.__encode_state_from_vehicles: frontmost vehicle has invalid state")
+                elif veh.state != VehicleState.NOT_ARRIVED:
+                    decoded_state.src_lane_state[veh.src_lane_id].queue_size += 1
             elif veh.state != VehicleState.LEFT:
                 veh_pos = veh.get_cur_cz()
                 next_veh_pos = veh.get_next_cz()
                 if veh_pos == "^":
                     if veh.state == VehicleState.WAITING:
-                        src_lane_state[veh.src_lane_id] = self.trans_per_src_lane[veh.src_lane_id].index(next_veh_pos) + 1
+                        decoded_state.src_lane_state[veh.src_lane_id].next_position = next_veh_pos
                 elif veh_pos != "$":
-                    cz_state[veh_pos] = self.trans_per_cz_id[veh_pos].index(next_veh_pos) + 1
-                    cz_state[veh_pos] *= 2
+                    decoded_state.cz_state[veh_pos].next_position = next_veh_pos
                     if veh.state == VehicleState.WAITING:
-                        cz_state[veh_pos] += 1
+                        decoded_state.cz_state[veh_pos].vehicle_state = "waiting"
+                    elif veh.state == VehicleState.BLOCKED:
+                        decoded_state.cz_state[veh_pos].vehicle_state = "blocked"
+                    elif veh.state == VehicleState.MOVING:
+                        decoded_state.cz_state[veh_pos].vehicle_state = "moving"
+                    else:
+                        raise Exception("GraphBasedSimEnv.__encode_state_from_vehicles: vehicle has invalid state")
+            else:
+                assert(veh.get_cur_cz() == "$")
+
+        return self.encode_state(decoded_state)
+
+    def __decode_action_to_vehicle_id(self, action: int) -> str:
+        decoded_action: BaseIntersectionEnv.DecodedAction = self.decode_action(action)
+        vehicle = None
         
-        state: int = 0
-
-        for cz_id in self.sorted_cz_ids:
-            trans = self.trans_per_cz_id[cz_id]
-            state = state * 2 * (len(trans) + 1) + cz_state[cz_id]
-
-        for src_lane_id in self.sorted_src_lane_ids:
-            trans = self.trans_per_src_lane[src_lane_id]
-            state = state * (len(trans) + 1) + src_lane_state[src_lane_id]
-
-        for src_lane_id in self.sorted_src_lane_ids:
-            queue_size = queue_size_per_src_lane[src_lane_id]
-            scale = self.__calc_queue_size_scale(queue_size)
-            state = state * (len(self.queue_size_scale) + 1) + scale
-
-        return self.real_to_outer_state[state]
-
-    @lru_cache(maxsize=1024)
-    def __decode_state(self, real_state: int) -> Dict:
-        res: Dict = {
-            "queue_size_per_src_lane": {},
-            "vehicle_positions": []
-        }
-
-        for src_lane_id in self.sorted_src_lane_ids[::-1]:
-            scale = real_state % (len(self.queue_size_scale) + 1)
-            real_state //= (len(self.queue_size_scale) + 1)
-            queue_size = 0 if scale == 0 else self.queue_size_scale[scale-1]
-            res["queue_size_per_src_lane"][src_lane_id] = queue_size
-
-        for src_lane_id in self.sorted_src_lane_ids[::-1]:
-            trans = self.trans_per_src_lane[src_lane_id]
-            lane_state = real_state % (len(trans) + 1)
-            real_state //= len(trans) + 1
-            if lane_state > 0:
-                res["vehicle_positions"].append({
-                    "id": src_lane_id,
-                    "type": "src",
-                    "waiting": True,
-                    "next_pos": trans[lane_state - 1]
-                })
-            
-        for cz_id in self.sorted_cz_ids[::-1]:
-            trans = self.trans_per_cz_id[cz_id]
-            cz_state = real_state % (2 * (len(trans) + 1))
-            real_state //= 2 * (len(trans) + 1)
-            is_waiting = cz_state % 2
-            cz_state //= 2
-            if cz_state > 0:
-                res["vehicle_positions"].append({
-                    "id": cz_id,
-                    "type": "cz",
-                    "waiting": is_waiting,
-                    "next_pos": trans[cz_state - 1]
-                })
-            
-        return res  
-
-    def decode_state(self, state: int) -> Dict:
-        real_state = self.outer_to_real_state[state]
-        return self.__decode_state(real_state)
-
+        if decoded_action.type == "src":
+            vehicle = self.sim.get_waiting_veh_of_src_lane(decoded_action.id)
+        elif decoded_action.type == "cz":
+            vehicle = self.sim.get_waiting_veh_on_cz(decoded_action.id)
+        
+        return vehicle.id if vehicle is not None else ""

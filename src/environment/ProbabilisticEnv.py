@@ -87,7 +87,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
                     src="moving",
                     dst="blocked",
                     condition=lambda: next_pos != "$" and sp.cz_state[next_pos].next_position,
-                    probability=1.0
+                    probability=0.067
                 ),
                 VehicleStateTransition(
                     src="blocked",

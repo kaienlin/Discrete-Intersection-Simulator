@@ -37,7 +37,8 @@ class BaseIntersectionEnv(gym.Env):
 
         self.deadlock_state_table = [False for _ in range(self.state_space_size)]
         for s in range(self.state_space_size):
-            if self.is_deadlock_state(s):
+            raw_s = self.compressed_to_raw_state[s]
+            if self._is_deadlock_raw_state(raw_s):
                 self.deadlock_state_table[s] = True
 
     def _create_state_encoding(self) -> int:
