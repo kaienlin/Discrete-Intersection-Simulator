@@ -186,6 +186,16 @@ class Simulator:
             if cur_cz_id == cz_id:
                 return veh
         return None
+
+    def is_frontmost_vehicle(self, vehicle: Vehicle) -> bool:
+        if vehicle.get_cur_cz() != "^" or vehicle.state == VehicleState.NOT_ARRIVED:
+            return False
+        cz_id: str = vehicle.get_next_cz()
+        v: Vertex = self.__TCG.get_v_by_idx(vehicle, cz_id)
+        for in_e in v.in_edges:
+            if in_e.type == EdgeType.TYPE_2 and in_e.v_from.state == VertexState.NON_EXECUTED:
+                return False
+        return True
             
     def run(self) -> None:
         self.__status = "RUNNING"
