@@ -1,2 +1,2 @@
-# Discrete-Intersection-Simulator
-A discrete time/space intersection simulator for reinforcement learning
+# Intersection-Management-with-Reinforcement-Learning
+This is a project trying to do intersection management with reinforcement learning.
