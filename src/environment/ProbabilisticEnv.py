@@ -1,390 +1,266 @@
-import pprint
-import gym
-from gym import spaces
-from typing import Tuple, Dict, List, Set
-from functools import lru_cache
-import copy
-import math
-import sys
+from collections import namedtuple
+from typing import Tuple, List
+import copy, math
 
 from simulator.intersection import Intersection
+from environment.BaseIntersectionEnv import BaseIntersectionEnv
 
-TRAFFIC_DENSITY = 0.05
+class ProbabilisticEnv(BaseIntersectionEnv):
+    def __init__(
+        self,
+        intersection: Intersection,
+        queue_size_scale: Tuple[int] = (1,),
+        traffic_density: float = 0.05,
+    ):
+        super().__init__(
+            intersection, 
+            queue_size_scale=queue_size_scale,
+        )
 
-class ProbabilisticEnv(gym.Env):
-    TERMINAL_STATE = 0
-    DEADLOCK_COST = 1e9
-    def __init__(self, intersection: Intersection, queue_size_scale: Tuple[int] = (1,)):
-        super(ProbabilisticEnv, self).__init__()
-        self.intersection = intersection
-        self.queue_size_scale = queue_size_scale
+        self.traffic_density: float = traffic_density
 
-        self.sorted_src_lane_ids = sorted(intersection.src_lanes.keys())
-        self.sorted_cz_ids = sorted(intersection.conflict_zones)
+        self.P: List[List[List[Tuple[float, int, int]]]] = [
+            [None for a in range(self.action_space_size)]
+            for s in range(self.state_space_size)
+        ]
 
-        self.state_space_size = self.__create_state_encoding(intersection)
-        self.action_space_size = self.__create_action_encoding(intersection)
+    def get_higher_level_queue_size(self, queue_size: int):
+        cur_level = self._discretize_queue_size(queue_size)
+        if cur_level == len(self.queue_size_scale):
+            return queue_size
+        return self.queue_size_scale[cur_level]
 
-        self.deadlock_state_table = [False for _ in range(self.state_space_size)]
-        for s in range(self.state_space_size):
-            if self.__is_deadlock_state(self.outer_to_real_state[s]):
-                self.deadlock_state_table[s] = True
-
-        self.P = tuple([
-            tuple([self.get_transitions(s, a) for a in range(self.action_space_size)])
-            for s in range(self.state_space_size
-        )])
-
-        self.observation_space = spaces.Discrete(self.state_space_size)
-        self.action_space = spaces.Discrete(self.action_space_size)
-
-    def __calc_queue_size_scale(self, queue_size: int):
-        for idx, scale in enumerate(self.queue_size_scale):
-            if queue_size < scale:
-                return idx
-        return len(self.queue_size_scale)
-
-    def __scale_to_real_size(self, scale: int):
-        if scale == 0:
+    def get_lower_level_queue_size(self, queue_size: int):
+        cur_level = self._discretize_queue_size(queue_size)
+        if cur_level == 0 or cur_level == 1:
             return 0
-        return self.queue_size_scale[scale - 1]
-
-    def __create_action_encoding(self, intersection: Intersection) -> int:
-        return len(intersection.conflict_zones) + len(intersection.src_lanes) + 1
-
-    def __create_state_encoding(self, intersection: Intersection) -> int:
-        trans_per_cz_id: Dict[str, Set[str]] = {cz_id: set() for cz_id in intersection.conflict_zones}
-        for traj in sorted(intersection.trajectories):
-            for idx, cz_1 in enumerate(traj[:-1]):
-                cz_2 = traj[idx + 1]
-                trans_per_cz_id[cz_1].add(cz_2)
-            trans_per_cz_id[traj[-1]].add("$")
-        self.trans_per_cz_id: Dict[str, List[str]] = {k: sorted(list(s)) for k, s in trans_per_cz_id.items()}
-        self.trans_per_src_lane: Dict[str, List[str]] = {k: sorted(list(s)) for k, s in self.intersection.src_lanes.items()}
-
-        # number of states of vehicle position
-        n_states = 1
-        for _, associated_czs in sorted(intersection.src_lanes.items()):
-            n_states *= 2 * (len(associated_czs) + 1)
-        for _, cz_ids in sorted(trans_per_cz_id.items()):
-            n_states *= len(cz_ids) + 1
-        
-        # number of (not left) vehicles in each source lane
-        n_states *= (len(self.queue_size_scale) + 1) ** len(self.sorted_src_lane_ids)
-
-        n_outer_states = 0
-        outer_to_real_state = dict()
-        real_to_outer_state = dict()
-        for s in range(n_states):
-            if not self.__is_invalid_state(s):
-                outer_to_real_state[n_outer_states] = s
-                real_to_outer_state[s] = n_outer_states
-                n_outer_states += 1
-        self.outer_to_real_state: Dict[int, int] = outer_to_real_state
-        self.real_to_outer_state: Dict[int, int] = real_to_outer_state
-
-        return n_outer_states
-
-    def is_invalid_state(self, state: int) -> bool:
-        state = self.outer_to_real_state[state]
-        return self.__is_invalid_state(state)
-
-    def __is_invalid_state(self, real_state: int) -> bool:
-        state_dict = self.__decode_state(real_state)
-        occupied_cz = set()
-        for cz_id, info in state_dict["cz_state"].items():
-            if "next_pos" in info:
-                occupied_cz.add(cz_id)
-        for _, info in state_dict["src_lane_state"].items():
-            if info.get("waiting", False) and info["next_pos"] in occupied_cz:
-                return True
-        for _, info in state_dict["cz_state"].items():
-            if info.get("waiting", False) and info["next_pos"] in occupied_cz:
-                return True
-        return False
-
-    def __is_deadlock_state(self, real_state: int) -> bool:
-        state_dict = self.__decode_state(real_state)
-        adj = {cz_id: [] for cz_id in self.sorted_cz_ids}
-        for cz_id, info in state_dict["cz_state"].items():
-            next_pos = info.get("next_pos", "")
-            if next_pos and next_pos != "$":
-                adj[cz_id].append(next_pos)
-        
-        color = {cz_id: "w" for cz_id in self.sorted_cz_ids}
-        def dfs(v: str):
-            color[v] = "g"
-            for u in adj[v]:
-                if color[u] == "w":
-                    if dfs(u):
-                        return True
-                elif color[u] == "g":
-                    return True
-            color[v] = "b"
-            return False
-        for cz_id in self.sorted_cz_ids:
-            if color[cz_id] == "w":
-                if dfs(cz_id):
-                    return True
-        return False
-
-    def encode_action(self, action: Dict) -> int:
-        if "type" not in action:
-            return 0
-        num_src_lane = len(self.sorted_src_lane_ids)
-        num_cz = len(self.sorted_src_lane_ids)
-        if action["type"] == "src":
-            return 1 + self.sorted_src_lane_ids.index(action["id"])
-        if action["type"] == "cz":
-            return 1 + num_src_lane + self.sorted_cz_ids.index(action["id"])
-
-    @lru_cache(maxsize=128)
-    def decode_action(self, action: int) -> Dict:
-        if action == 0:
-            return {}
-        num_src_lane = len(self.sorted_src_lane_ids)
-        num_cz = len(self.sorted_src_lane_ids)
-        if 1 <= action <= num_src_lane:
-            return {"type": "src", "id": self.sorted_src_lane_ids[action - 1]}
-        elif num_src_lane + 1 <= action <= num_cz + num_src_lane:
-            return {"type": "cz", "id": self.sorted_cz_ids[action - num_src_lane - 1]}
-
-    def encode_state(self, state_dict: Dict) -> int:
-        state = 0
-        for cz_id in self.sorted_cz_ids:
-            trans = self.trans_per_cz_id[cz_id]
-            state *= 2 * (len(trans) + 1)
-            next_pos = state_dict["cz_state"][cz_id].get("next_pos", False)
-            is_waiting = state_dict["cz_state"][cz_id].get("waiting", False)
-            if next_pos:
-                state += 2 * (trans.index(next_pos) + 1)
-            if is_waiting:
-                state += 1
-        
-        for src_lane_id in self.sorted_src_lane_ids:
-            trans = self.trans_per_src_lane[src_lane_id]
-            state *= len(trans) + 1
-            next_pos = state_dict["src_lane_state"][src_lane_id].get("next_pos", False)
-            if next_pos:
-                state += trans.index(next_pos) + 1
-        
-        for src_lane_id in self.sorted_src_lane_ids:
-            queue_size = state_dict["src_lane_state"][src_lane_id]["queue_size"]
-            scale = self.__calc_queue_size_scale(queue_size)
-            state *= len(self.queue_size_scale) + 1
-            state += scale
-        
-        try:
-            return self.real_to_outer_state[state]
-        except KeyError:
-            pprint.pprint(self.__decode_state(state))
-
-    @lru_cache(maxsize=1024)
-    def __decode_state(self, real_state: int) -> Dict:
-        res: Dict = {
-            "src_lane_state": {src_lane_id: {} for src_lane_id in self.sorted_src_lane_ids},
-            "cz_state": {cz_id: {} for cz_id in self.sorted_cz_ids}
-        }
-
-        for src_lane_id in self.sorted_src_lane_ids[::-1]:
-            scale = real_state % (len(self.queue_size_scale) + 1)
-            real_state //= (len(self.queue_size_scale) + 1)
-            queue_size = 0 if scale == 0 else self.queue_size_scale[scale-1]
-            res["src_lane_state"][src_lane_id]["queue_size"] = queue_size
-
-        for src_lane_id in self.sorted_src_lane_ids[::-1]:
-            trans = self.trans_per_src_lane[src_lane_id]
-            lane_state = real_state % (len(trans) + 1)
-            real_state //= len(trans) + 1
-            if lane_state > 0:
-                res["src_lane_state"][src_lane_id].update({
-                        "waiting": True,
-                        "next_pos": trans[lane_state - 1]
-                })
-            
-        for cz_id in self.sorted_cz_ids[::-1]:
-            trans = self.trans_per_cz_id[cz_id]
-            cz_state = real_state % (2 * (len(trans) + 1))
-            real_state //= 2 * (len(trans) + 1)
-            is_waiting = bool(cz_state % 2)
-            cz_state //= 2
-            if cz_state > 0:
-                res["cz_state"][cz_id].update({
-                    "waiting": is_waiting,
-                    "next_pos": trans[cz_state - 1]
-                })
-            
-        return res
-
-    def decode_state(self, state: int) -> Dict:
-        real_state = self.outer_to_real_state[state]
-        return self.__decode_state(real_state)
+        return self.queue_size_scale[cur_level - 2]
 
     def get_transitions(self, s: int, a: int):
         '''
         return a list of 3-tuple (prob, next_state, cost)
         '''
+        # use cache
+        if self.P[s][a] is not None:
+            return self.P[s][a]
+
         if s == self.TERMINAL_STATE:
             return [(1.0, self.TERMINAL_STATE, 0)]
         elif self.deadlock_state_table[s]:
             return [(1.0, self.TERMINAL_STATE, self.DEADLOCK_COST)]
+
         res: List[Tuple[float, int, int]] = []
-        s_dec = self.decode_state(s)
-        a_dec = self.decode_action(a)
+        origin_s_dec: BaseIntersectionEnv.DecodedState = self.decode_state(s)
+        a_dec: BaseIntersectionEnv.DecodedAction = self.decode_action(a)
 
-        cost = 0
-        for info in s_dec["src_lane_state"].values():
-            next_pos = info.get("next_pos", "")
-            if next_pos:
+        cost: int = 0
+        for src_lane_state in origin_s_dec.src_lane_state.values():
+            if src_lane_state.vehicle_state != "moving":
                 cost += 1
-            cost += info["queue_size"]
-        for info in s_dec["cz_state"].values():
-            next_pos = info.get("next_pos", "")
-            if next_pos:
+            cost += src_lane_state.queue_size
+
+        for cz_state in origin_s_dec.cz_state.values():
+            if cz_state.vehicle_state != "moving":
                 cost += 1
 
-        def explore_cz(i: int, prob: float, sp: dict):
+        def explore_cz(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
+            '''
+            Explore the possible changes to the vehicle on a specific conflict zone
+            '''
             if i == len(self.sorted_cz_ids):
-                #print("* ", prob)
-                #pprint.pprint(sp)
                 res.append((prob, self.encode_state(sp), cost))
                 return
-            # If the cz is just occupied by a the vehicle specified in action,
-            # then it is impossible for the vehicle to be waiting suddenly
-            cz_id = self.sorted_cz_ids[i]
-            next_pos = s_dec["cz_state"][cz_id].get("next_pos", False)
-            is_waiting = s_dec["cz_state"][cz_id].get("waiting", False)
-            if next_pos and not is_waiting and (next_pos == "$" or not sp["cz_state"][next_pos].get("next_pos", False)):
-                waiting_prob = 0.067
-                sp["cz_state"][cz_id]["waiting"] = True
-                #print(f"cz {cz_id} waiting")
-                explore_cz(i + 1, prob * waiting_prob, sp)
-                sp["cz_state"][cz_id]["waiting"] = False
-                #print(f"cz {cz_id} keep")
-                explore_cz(i + 1, prob * (1 - waiting_prob), sp)
+
+            cz_id: str = self.sorted_cz_ids[i]
+            next_pos: str = origin_s_dec.cz_state[cz_id].next_position
+            veh_state: str = origin_s_dec.cz_state[cz_id].vehicle_state
+
+            VehicleStateTransition = namedtuple("VehicleStateTransition", ["src", "dst", "condition", "probability"])
+            veh_state_transition_cfg: List[VehicleStateTransition] = [
+                VehicleStateTransition(
+                    src="moving",
+                    dst="waiting",
+                    condition=lambda: next_pos == "$" or not sp.cz_state[next_pos].next_position,
+                    probability=0.067
+                ), # TODO: Under this condition, it is actually possible that "moving" -> "blocked"
+                VehicleStateTransition(
+                    src="moving",
+                    dst="blocked",
+                    condition=lambda: next_pos != "$" and sp.cz_state[next_pos].next_position,
+                    probability=1.0
+                ),
+                VehicleStateTransition(
+                    src="blocked",
+                    dst="waiting",
+                    condition=lambda: next_pos == "$" or not sp.cz_state[next_pos].next_position,
+                    probability=0.8
+                )
+            ]
+
+            if next_pos:
+                satisfied_transition: List[VehicleStateTransition] = []
+                for trans in veh_state_transition_cfg:
+                    if trans.src == veh_state and trans.condition():
+                        satisfied_transition.append(trans)
+                if len(satisfied_transition) > 1:
+                    raise Exception("ProbabilisticEnv.get_transitions: Bad vehicle state transition configuration")
+                if len(satisfied_transition) == 1:
+                    trans = satisfied_transition[0]
+                    # transition taken
+                    sp.cz_state[cz_id].vehicle_state = trans.dst
+                    explore_cz(i + 1, prob * trans.probability, sp)
+                    sp.cz_state[cz_id].vehicle_state = trans.src
+                    # transition not taken
+                    if not math.isclose(0.0, 1.0 - trans.probability):
+                        explore_cz(i + 1, prob * (1 - trans.probability), sp)
+                else:
+                    # no transition is available
+                    explore_cz(i + 1, prob, sp)
             else:
-                #print(f"cz {cz_id} cannot change")
+                # no vehicle on this cz
                 explore_cz(i + 1, prob, sp)
 
-        def explore_queue(i: int, prob: float, sp: dict):
-            # a vehicle arrived
-            if i == len(self.sorted_src_lane_ids):
-                explore_cz(0, prob, sp) ##
-                return
-            src_lane_id = self.sorted_src_lane_ids[i]
-            cur_scale_size = sp["src_lane_state"][src_lane_id]["queue_size"]
-            cur_scale = self.__calc_queue_size_scale(cur_scale_size)
-            if cur_scale < len(self.queue_size_scale):
-                next_scale_size = self.queue_size_scale[cur_scale]
-                increase_prob = TRAFFIC_DENSITY * 1.0 / (next_scale_size - cur_scale_size)
-                unchange_prob = 1.0 - increase_prob
-                # queue size increases
-                if not math.isclose(0.0, unchange_prob):
-                    #print(f"queue {src_lane_id} unchange")
-                    explore_src(i, prob * unchange_prob, sp) ##
-
-                # queue size not increases
-                if not math.isclose(0.0, increase_prob):
-                    sp["src_lane_state"][src_lane_id]["queue_size"] = next_scale_size
-                    #print(f"queue {src_lane_id} increases")
-                    explore_src(i, prob * increase_prob, sp)  ##
-                    sp["src_lane_state"][src_lane_id]["queue_size"] = cur_scale_size
-            else:
-                explore_src(i, prob, sp) ##
-
-        def explore_src(i: int, prob: float, sp: Dict):
+        def explore_src(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
+            '''
+            Explore the possibility that a vehicle in the queue of a specific source lane starts waiting
+            '''
             if i == len(self.sorted_src_lane_ids):
                 explore_cz(0, prob, sp)
                 return
+
             src_lane_id = self.sorted_src_lane_ids[i]
-            if not sp["src_lane_state"][src_lane_id].get("waiting", False):
-                # change to waiting if a vehicle in queue arrived
-                if sp["src_lane_state"][src_lane_id]["queue_size"] > 0:
-                    trans = self.trans_per_src_lane[src_lane_id]
-                    avail_trans_cnt = 0
-                    for next_cz in trans:
-                        if sp["cz_state"][next_cz].get("next_pos", "") == "":
-                            avail_trans_cnt += 1
-                            sp["src_lane_state"][src_lane_id]["next_pos"] = next_cz
-                            sp["src_lane_state"][src_lane_id]["waiting"] = True
+            veh_state = sp.src_lane_state[src_lane_id].vehicle_state
+            next_pos = sp.src_lane_state[src_lane_id].next_position
+            if veh_state == "blocked" and sp.cz_state[next_pos].vehicle_state == "":
+                start_waiting_prob = 0.8
+                # start waiting
+                sp.src_lane_state[src_lane_id].vehicle_state = "waiting"
+                explore_src(i + 1, prob * start_waiting_prob, sp)
+                sp.src_lane_state[src_lane_id].vehicle_state = "blocked"
 
-                            # calculate the probability that the queue size decreases for one level
-                            cur_queue_size = sp["src_lane_state"][src_lane_id]["queue_size"]
-                            cur_queue_scale = self.__calc_queue_size_scale(cur_queue_size)
-                            next_queue_size = 0 if cur_queue_scale == 1 else self.queue_size_scale[cur_queue_scale - 2]
-                            decrease_prob = 1.0 / (cur_queue_size - next_queue_size)
-
-                            # Case 1: queue size does not decreases
-                            if not math.isclose(0.0, 1 - decrease_prob):
-                                #print(f"src {src_lane_id} not decrease and wait for {next_cz}")
-                                explore_src(i + 1, prob * (1 - decrease_prob) * (1 / len(trans)), sp) ##
-                            
-                            # Case 2: queue size decreases
-                            if not math.isclose(0.0, decrease_prob):
-                                sp["src_lane_state"][src_lane_id]["queue_size"] = next_queue_size
-                                #print(f"src {src_lane_id} decreases and wait for {next_cz}")
-                                explore_src(i + 1, prob * decrease_prob * (1 / len(trans)), sp) ##
-                                sp["src_lane_state"][src_lane_id]["queue_size"] = cur_queue_size
-
-                            del sp["src_lane_state"][src_lane_id]["next_pos"]
-                            del sp["src_lane_state"][src_lane_id]["waiting"]
-                    
-                    # For the blocked transitions
-                    #print(f"src {src_lane_id} unchanged")
-                    if avail_trans_cnt < len(trans):
-                        explore_src(i + 1, prob * (1.0 - avail_trans_cnt / len(trans)), sp) ##
-                else:
-                    # queue size = 0
-                    #print(f"src {src_lane_id} unchanged")
-                    explore_src(i + 1, prob, sp) ##
+                # keep blocked
+                explore_src(i + 1, prob * (1 - start_waiting_prob), sp)
             else:
                 explore_src(i + 1, prob, sp)
 
+        def explore_queue_dec(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
+            if i == len(self.sorted_src_lane_ids):
+                explore_src(0, prob, sp)
+                return
 
-        action_type: str = ""
-        if a_dec.get("type", "") == "src":
-            if s_dec["src_lane_state"][a_dec["id"]].get("waiting", False):
-                action_type = "src_lane_state"
-        elif a_dec.get("type", "") == "cz":
-            if s_dec["cz_state"][a_dec["id"]].get("waiting", False):
-                action_type = "cz_state"
-        
-        state_dict = copy.deepcopy(s_dec)
+            src_lane_id = self.sorted_src_lane_ids[i]
 
-        if action_type != "" and s_dec[action_type][a_dec["id"]].get("waiting", False):
-            next_pos = s_dec[action_type][a_dec["id"]]["next_pos"]
-            del state_dict[action_type][a_dec["id"]]["waiting"]
-            del state_dict[action_type][a_dec["id"]]["next_pos"]
+            # Phase 1: If the front of this source lane is empty, take a vehicle from the queue if its queue size > 0
+            if sp.src_lane_state[src_lane_id].vehicle_state == "" \
+                and sp.src_lane_state[src_lane_id].queue_size > 0:
+                # change to blocked if a vehicle in queue arrived
+                transitions = self.transitions_of_src_lane[src_lane_id]
+                for next_cz in transitions:
+                    sp.src_lane_state[src_lane_id].next_position = next_cz
+                    sp.src_lane_state[src_lane_id].vehicle_state = "blocked"
 
-            for _, info in state_dict["src_lane_state"].items():
-                if info.get("waiting", False):
+                    # calculate the probability that the queue size decreases for one level
+                    cur_level_queue_size = sp.src_lane_state[src_lane_id].queue_size
+                    higher_level_queue_size = self.get_higher_level_queue_size(cur_level_queue_size)
+                    lower_level_queue_size = self.get_lower_level_queue_size(cur_level_queue_size)
+                    diff = higher_level_queue_size - cur_level_queue_size
+
+                    if diff == 0:  # if the current queue size is of the highest level
+                        diff = 2
+                    
+                    assert(diff > 0)  # since we have checked queue size > 0
+                    decrease_prob = 1.0 / diff
+
+                    # Case 1: queue size does not decreases
+                    if not math.isclose(0.0, 1 - decrease_prob):
+                        explore_queue_dec(i + 1, prob * (1 - decrease_prob) * (1 / len(transitions)), sp)
+                    
+                    # Case 2: queue size decreases
+                    if not math.isclose(0.0, decrease_prob):
+                        sp.src_lane_state[src_lane_id].queue_size = lower_level_queue_size
+                        explore_queue_dec(i + 1, prob * decrease_prob * (1 / len(transitions)), sp) ##
+                        sp.src_lane_state[src_lane_id].queue_size = cur_level_queue_size
+
+                    sp.src_lane_state[src_lane_id].next_position = ""
+                    sp.src_lane_state[src_lane_id].vehicle_state = ""
+            else:
+                explore_queue_dec(i + 1, prob, sp)
+
+        def explore_queue_inc(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
+            '''
+            Explore the possibility that a specific source lane's queue size increases for one level
+            '''
+            if i == len(self.sorted_src_lane_ids):
+                explore_queue_dec(0, prob, sp)
+                return
+
+            src_lane_id = self.sorted_src_lane_ids[i]
+            cur_level_queue_size = origin_s_dec.src_lane_state[src_lane_id].queue_size
+            higher_level_queue_size = self.get_higher_level_queue_size(cur_level_queue_size)
+            diff = higher_level_queue_size - cur_level_queue_size
+            if diff > 0:
+                increase_prob = self.traffic_density * (1.0 / diff)
+                unchange_prob = 1.0 - increase_prob
+
+                # queue size not increases
+                if not math.isclose(0.0, unchange_prob):
+                    explore_queue_inc(i + 1, prob * unchange_prob, sp)
+
+                # queue size increases
+                if not math.isclose(0.0, increase_prob):
+                    sp.src_lane_state[src_lane_id].queue_size = higher_level_queue_size
+                    explore_queue_inc(i + 1, prob * increase_prob, sp)
+                    sp.src_lane_state[src_lane_id].queue_size = cur_level_queue_size
+            else:
+                explore_queue_inc(i + 1, prob, sp)
+
+        sp_init = copy.deepcopy(origin_s_dec)
+        next_pos: str = ""
+        veh_state: str = ""
+        state_ref = None
+        if a_dec.type == "src":
+            state_ref = sp_init.src_lane_state[a_dec.id]
+        elif a_dec.type == "cz":
+            state_ref = sp_init.cz_state[a_dec.id]
+            
+        if state_ref is not None:
+            next_pos = state_ref.next_position
+            veh_state = state_ref.vehicle_state
+
+        if next_pos == "" or veh_state != "waiting":
+            explore_queue_inc(0, 1.0, sp_init)
+        else:
+            state_ref.vehicle_state = ""
+            state_ref.next_position = ""
+
+            # If there exist other waiting vehicles, then the cost is 0
+            # This is for making moving multiple vehicles in one time step possible
+            for src_lane_state in sp_init.src_lane_state.values():
+                if src_lane_state.vehicle_state == "waiting":
                     cost = 0
-            for _, info in state_dict["cz_state"].items():
-                if info.get("waiting", False):
+            for cz_state in sp_init.cz_state.values():
+                if cz_state.vehicle_state == "waiting":
                     cost = 0
 
             if next_pos == "$":
-                explore_src(0, 1.0, state_dict)
+                explore_queue_inc(0, 1.0, sp_init)
             else:
-                trans = self.trans_per_cz_id[next_pos]
+                trans = self.transitions_of_cz[next_pos]
                 for next2_pos in trans:
-                    state_dict["cz_state"][next_pos].update({
-                        "waiting": False,
-                        "next_pos": next2_pos
-                    })
-                    for _, info in state_dict["src_lane_state"].items():
-                        if info.get("waiting", False) and info.get("next_pos", "") == next_pos:
-                            del info["waiting"]
-                            del info["next_pos"]
-                            if info["queue_size"] == 0:
-                                info["queue_size"] += 1
+                    sp_init.cz_state[next_pos] = BaseIntersectionEnv.CzState(
+                        vehicle_state="moving",
+                        next_position=next2_pos
+                    )
+                    for src_lane_state in sp_init.src_lane_state.values():
+                        if src_lane_state.vehicle_state == "waiting" and src_lane_state.next_position == next_pos:
+                            src_lane_state.vehicle_state = "blocked"
 
-                    for _, info in state_dict["cz_state"].items():
-                        if info.get("waiting", False) and info.get("next_pos", "") == next_pos:
-                            info["waiting"] = False 
-                    explore_src(0, 1.0 / len(trans), state_dict)
-        else:
-            explore_src(0, 1.0, state_dict)
+                    for cz_state in sp_init.cz_state.values():
+                        if cz_state.vehicle_state == "waiting" and cz_state.next_position == next_pos:
+                            cz_state.vehicle_state = "blocked"
 
+                    explore_queue_inc(0, 1.0 / len(trans), sp_init)
+
+        self.P[s][a] = res
         return res
 

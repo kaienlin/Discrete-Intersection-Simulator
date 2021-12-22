@@ -18,12 +18,10 @@ class BaseIntersectionEnv(gym.Env):
         self,
         intersection: Intersection,
         queue_size_scale: Tuple[int] = (1,),
-        traffic_density: float = 0.05
     ):
         super().__init__()
         self.intersection: Intersection = intersection
         self.queue_size_scale: Tuple[int] = queue_size_scale
-        self.traffic_density: float = traffic_density
 
         if len(queue_size_scale) == 0 or queue_size_scale[0] != 1:
             raise Exception("BaseIntersectionEnv: Invalid queue size scale")
@@ -250,7 +248,7 @@ class BaseIntersectionEnv(gym.Env):
         elif num_src_lane + 1 <= action <= num_cz + num_src_lane:
             return BaseIntersectionEnv.DecodedAction(type="cz", id=self.sorted_cz_ids[action - num_src_lane - 1])
         else:
-            raise Exception("BaseIntersectionEnv.decode_action: Invalid action")
+            raise Exception(f"BaseIntersectionEnv.decode_action: Invalid action {action}")
 
 
     @dataclass
