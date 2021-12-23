@@ -1,4 +1,5 @@
 from collections import namedtuple
+from functools import lru_cache
 from typing import Tuple, List
 import copy, math
 
@@ -265,3 +266,16 @@ class ProbabilisticEnv(BaseIntersectionEnv):
         self.P[s][a] = res
         return res
 
+    @lru_cache(maxsize=1024)
+    def reachable(self, src_state: int, action: int, dst_state: int)  -> bool:
+        visited = [False for _ in range(self.state_space_size)]
+        stack = [trans[1] for trans in self.get_transitions(src_state, action)]
+        while len(stack) > 0:
+            s = stack.pop()
+            if visited[s]: continue
+            visited[s] = True
+            if s == dst_state: return True
+            for _, next_s, _ in self.get_transitions(s, 0):
+                if not visited[next_s]:
+                    stack.append(next_s)
+        return False
