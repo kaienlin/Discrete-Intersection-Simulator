@@ -1,6 +1,5 @@
 from collections import namedtuple
-from functools import lru_cache
-from typing import Tuple, List
+from typing import Tuple, List, Set
 import copy, math
 
 from simulator.intersection import Intersection
@@ -24,6 +23,8 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             [None for a in range(self.action_space_size)]
             for s in range(self.state_space_size)
         ]
+
+        self.reachable_states_no_op_table: List[Set[int]] = [None for s in range(self.state_space_size)]
 
     def get_higher_level_queue_size(self, queue_size: int):
         cur_level = self._discretize_queue_size(queue_size)
@@ -266,16 +267,27 @@ class ProbabilisticEnv(BaseIntersectionEnv):
         self.P[s][a] = res
         return res
 
-    @lru_cache(maxsize=1024)
-    def reachable(self, src_state: int, action: int, dst_state: int)  -> bool:
+    def reachable_states_no_op(self, src_state: int) -> Set[int]:
+        if self.reachable_states_no_op_table[src_state] is not None:
+            return self.reachable_states_no_op_table[src_state]
+
         visited = [False for _ in range(self.state_space_size)]
-        stack = [trans[1] for trans in self.get_transitions(src_state, action)]
+        stack = [src_state]
+        reachable_states = set()
         while len(stack) > 0:
             s = stack.pop()
             if visited[s]: continue
             visited[s] = True
-            if s == dst_state: return True
+            reachable_states.add(s)
             for _, next_s, _ in self.get_transitions(s, 0):
                 if not visited[next_s]:
                     stack.append(next_s)
+
+        self.reachable_states_no_op_table[src_state] = reachable_states
+        return reachable_states
+
+    def reachable(self, src_state: int, action: int, dst_state: int) -> bool:
+        for _, next_s, _ in self.get_transitions(src_state, action):
+            if dst_state in self.reachable_states_no_op(next_s):
+                return True
         return False
