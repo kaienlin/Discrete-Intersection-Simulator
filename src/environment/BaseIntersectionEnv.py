@@ -117,7 +117,7 @@ class BaseIntersectionEnv(gym.Env):
         adj = {cz_id: [] for cz_id in self.sorted_cz_ids}
         for cz_id, cz_state in decoded_state.cz_state.items():
             next_pos = cz_state.next_position
-            if next_pos and next_pos != "$":
+            if next_pos and next_pos != "$" and cz_state.vehicle_state == "blocked":
                 adj[cz_id].append(next_pos)
 
         color = {cz_id: "w" for cz_id in self.sorted_cz_ids}
