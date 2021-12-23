@@ -226,20 +226,14 @@ class Simulator:
         while not self.__event_queue.empty() and self.__event_queue.top().time == self.__timestamp:
             ev = self.__event_queue.top()
             self.__event_queue.pop()
-            #self.__logger.warning(f"[report] {ev.vertex.vehicle.id} {ev.type}")
             if ev.type == EventType.END_MOVING:
                 if ev.vertex.vehicle.on_last_cz():
                     ev.vertex.vehicle.set_state(VehicleState.WAITING)
-                    ev.vertex.vehicle.move_to_next_cz()
-                    ev.vertex.vehicle.set_state(VehicleState.LEFT)
-                    self.__TCG.finish_execute(ev.vertex)
-                    self.__release_cz(ev.vertex)
                 elif self.__next_not_blocked(ev.vertex):
                     ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
                     next_v = self.__TCG.get_v_by_idx(ev.vertex.vehicle, ev.vertex.vehicle.get_next_cz())
                     avail_time = self.__compute_earliest_entering_time(next_v)
                     self.__event_queue.push(avail_time, EventType.START_WAITING, next_v)
-                    #ev.vertex.vehicle.set_state(VehicleState.WAITING)
                 else:
                     ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
             elif ev.type == EventType.ARRIVAL:
@@ -261,7 +255,6 @@ class Simulator:
             if child.vehicle.state == VehicleState.BLOCKED and self.__ready_condition(child):
                 avail_time = self.__compute_earliest_entering_time(child)
                 self.__event_queue.push(avail_time, EventType.START_WAITING, child)
-                #child.vehicle.set_state(VehicleState.WAITING)
 
     def __block_cz(self, vertex: Vertex):
         for out_e in vertex.out_edges:
@@ -284,17 +277,25 @@ class Simulator:
 
         self.__prev_moved = True
         vehicle = self.__vehicles[allowed_veh_id]
+
         if vehicle.idx_on_traj != -1:
             cur_vertex = self.__TCG.get_v_by_idx(vehicle, vehicle.get_cur_cz())
             self.__TCG.finish_execute(cur_vertex)
             self.__release_cz(cur_vertex)
+
         next_cz = vehicle.get_next_cz()
-        next_vertex = self.__TCG.get_v_by_idx(vehicle, next_cz)
+        next_vertex = None
+        if next_cz != "$":
+            next_vertex = self.__TCG.get_v_by_idx(vehicle, next_cz)
 
         vehicle.move_to_next_cz()
+
+        if next_cz == "$":
+            vehicle.set_state(VehicleState.LEFT)
+            return
+
         vehicle.set_state(VehicleState.MOVING)
         next_vertex.entering_time = self.__timestamp
         self.__event_queue.push(next_vertex.entering_time + next_vertex.get_consumed_time(), EventType.END_MOVING, next_vertex)
         self.__TCG.start_execute(next_vertex)
-        self.__block_cz(next_vertex)
-                
+        self.__block_cz(next_vertex)      
