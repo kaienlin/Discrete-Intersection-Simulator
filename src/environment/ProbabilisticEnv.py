@@ -79,21 +79,21 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             veh_state_transition_cfg: List[VehicleStateTransition] = [
                 VehicleStateTransition(
                     src="moving",
-                    dst="waiting",
+                    dst=("waiting", "blocked"),
                     condition=lambda: next_pos == "$" or not sp.cz_state[next_pos].next_position,
-                    probability=0.067
-                ), # TODO: Under this condition, it is actually possible that "moving" -> "blocked"
+                    probability=(0.06, 0.007)
+                ),
                 VehicleStateTransition(
                     src="moving",
-                    dst="blocked",
+                    dst=("blocked",),
                     condition=lambda: next_pos != "$" and sp.cz_state[next_pos].next_position,
-                    probability=0.067
+                    probability=(0.067,)
                 ),
                 VehicleStateTransition(
                     src="blocked",
-                    dst="waiting",
+                    dst=("waiting",),
                     condition=lambda: next_pos == "$" or not sp.cz_state[next_pos].next_position,
-                    probability=0.8
+                    probability=(0.8,)
                 )
             ]
 
@@ -107,12 +107,13 @@ class ProbabilisticEnv(BaseIntersectionEnv):
                 if len(satisfied_transition) == 1:
                     trans = satisfied_transition[0]
                     # transition taken
-                    sp.cz_state[cz_id].vehicle_state = trans.dst
-                    explore_cz(i + 1, prob * trans.probability, sp)
-                    sp.cz_state[cz_id].vehicle_state = trans.src
+                    for dst, transition_prob in zip(trans.dst, trans.probability):
+                        sp.cz_state[cz_id].vehicle_state = dst
+                        explore_cz(i + 1, prob * transition_prob, sp)
+                        sp.cz_state[cz_id].vehicle_state = trans.src
                     # transition not taken
-                    if not math.isclose(0.0, 1.0 - trans.probability):
-                        explore_cz(i + 1, prob * (1 - trans.probability), sp)
+                    if not math.isclose(0.0, 1.0 - sum(trans.probability)):
+                        explore_cz(i + 1, prob * (1.0 - sum(trans.probability)), sp)
                 else:
                     # no transition is available
                     explore_cz(i + 1, prob, sp)
