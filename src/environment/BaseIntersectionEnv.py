@@ -142,6 +142,20 @@ class BaseIntersectionEnv(gym.Env):
     def is_deadlock_state(self, state: int) -> bool:
         return self.deadlock_state_table[state]
 
+    def _is_actable_raw_state(self, raw_state: int) -> bool:
+        decoded_state: BaseIntersectionEnv.DecodedState = self._decode_raw_state(raw_state)
+        for src_lane_state in decoded_state.src_lane_state.values():
+            if src_lane_state.vehicle_state == "waiting":
+                return True
+        for cz_state in decoded_state.cz_state.values():
+            if cz_state.vehicle_state == "waiting":
+                return True
+        return False
+    
+    def is_actable_state(self, state: int) -> bool:
+        raw_state = self.compressed_to_raw_state[state]
+        return self._is_actable_raw_state(raw_state)
+
     def _discretize_queue_size(self, queue_size: int) -> int:
         for idx, threshold in enumerate(self.queue_size_scale):
             if queue_size < threshold:
