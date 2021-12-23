@@ -5,6 +5,7 @@ from gym import spaces
 from typing import Tuple, Dict, Set, List
 from functools import lru_cache
 from dataclasses import dataclass, field
+from tqdm import tqdm
 
 from simulator.intersection import Intersection
 
@@ -36,7 +37,7 @@ class BaseIntersectionEnv(gym.Env):
         self.action_space = spaces.Discrete(self.action_space_size)
 
         self.deadlock_state_table = [False for _ in range(self.state_space_size)]
-        for s in range(self.state_space_size):
+        for s in tqdm(range(self.state_space_size), desc="Finding deadlock states", leave=False, ascii=True):
             raw_s = self.compressed_to_raw_state[s]
             if self._is_deadlock_raw_state(raw_s):
                 self.deadlock_state_table[s] = True
@@ -75,7 +76,7 @@ class BaseIntersectionEnv(gym.Env):
         n_compressed_states: int = 0
         compressed_to_raw_state: Dict[int, int] = dict()
         raw_to_compressed_state: Dict[int, int] = dict()
-        for raw_s in range(n_raw_states):
+        for raw_s in tqdm(range(n_raw_states), desc="Filtering out invalid states", leave=False, ascii=True):
             if not self._is_invalid_raw_state(raw_s):
                 compressed_to_raw_state[n_compressed_states] = raw_s
                 raw_to_compressed_state[raw_s] = n_compressed_states
