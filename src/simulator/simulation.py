@@ -183,7 +183,7 @@ class Simulator:
     def get_waiting_veh_on_cz(self, cz_id: str):
         for veh in self.__vehicles.values():
             cur_cz_id = veh.get_cur_cz()
-            if cur_cz_id == cz_id:
+            if cur_cz_id == cz_id and veh.state == VehicleState.WAITING:
                 return veh
         return None
 
