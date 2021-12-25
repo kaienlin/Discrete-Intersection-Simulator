@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import enum
-from typing import Tuple, Set
+from typing import Dict, Tuple, Set
 
 class VehicleState(enum.Enum):
     NOT_ARRIVED = enum.auto()
@@ -71,6 +73,16 @@ class Vehicle:
         if self.__idx_on_traj == len(self.__trajectory):
             return " "
         return self.__trajectory[self.__idx_on_traj + 1]
+
+    def asdict(self) -> Dict:
+        res = {}
+        res["id"] = self.__id
+        res["earliest_arrival_time"] = self.__earliest_arrival_time
+        res["trajectory"] = self.__trajectory
+        res["src_lane_id"] = self.__src_lane_id
+        res["dst_lane_id"] = self.__dst_lane_id
+        res["vertex_passing_time"] = self.__vertex_passing_time
+        return res
 
     def __hash__(self):
         return hash(self.__id)

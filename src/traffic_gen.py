@@ -1,6 +1,6 @@
 import random
-import itertools
 from typing import Dict, Set
+from pathlib import Path
 
 from simulator import Intersection, Simulator
 
@@ -44,26 +44,27 @@ def random_traffic_generator(
         i += 1
         yield sim
 
-def enumerate_traffic_patterns_generator(intersection: Intersection):
-    src_to_traj = get_src_traj_dict(intersection)
-    src_lane_id_list = []
-    S = []
-    n = 1
-    for src_lane_id, trajs in src_to_traj.items():
-        S_i = []
-        for num in range(len(intersection.conflict_zones)-1, -1, -1):
-            S_i.extend(itertools.product(trajs, repeat=num))
-        S.append(S_i)
-        n *= len(S_i)
-        src_lane_id_list.append(src_lane_id)
+def datadir_traffic_generator(intersection: Intersection, data_dir):
+    data_dir = Path(data_dir)
+    if not data_dir.exists() or not data_dir.is_dir():
+        raise Exception("data_dir is not a directory")
 
-    for traffic in itertools.product(*S):
+    for traffic_file in data_dir.iterdir():
         sim = Simulator(intersection)
-        veh_cnt = 0
-        for src_lane_id, traj_list in zip(src_lane_id_list, traffic):
-            for traj in traj_list:
-                dst_lane_id = src_to_traj[src_lane_id][traj]
-                sim.add_vehicle(f"vehicle-{veh_cnt}", 0, traj, src_lane_id, dst_lane_id)
-                veh_cnt += 1
+        sim.load_traffic(traffic_file)
         yield sim
-          
+
+
+if __name__ == "__main__":
+    from utility import get_4cz_intersection
+    import numpy as np
+
+    data_dir = Path("./validation/4cz/")
+    if not data_dir.exists():
+        data_dir.mkdir(parents=True)
+
+    intersection = get_4cz_intersection()
+    random.seed(0)
+    gen = random_traffic_generator(intersection, num_iter=10, poisson_parameter_list=np.arange(0, 1, 0.01).tolist())
+    for i, sim in enumerate(gen):
+        sim.dump_traffic(data_dir / f"{i}.json")

@@ -6,6 +6,7 @@ from typing import Iterable, Tuple, List, Dict
 import heapq
 import enum
 import logging
+import json
 
 class EventType(enum.Enum):
     END_MOVING = enum.auto()
@@ -101,6 +102,24 @@ class Simulator:
             self.__TCG.add_vehicle(vehicle)
             v = self.__TCG.get_v_by_idx(vehicle, vehicle.trajectory[0])
             self.__event_queue.push(max(self.__timestamp + 1, vehicle.earliest_arrival_time), EventType.ARRIVAL, v)
+
+    def dump_traffic(self, path) -> None:
+        vehicle_dicts = []
+        for veh in self.__vehicles.values():
+            vehicle_dicts.append(veh.asdict())
+        json.dump(vehicle_dicts, open(path, "w"), indent=2, sort_keys=True)
+
+    def load_traffic(self, path) -> None:
+        vehicle_dicts = json.load(open(path, "r"))
+        for veh_dict in vehicle_dicts:
+            self.add_vehicle(
+                veh_dict["id"],
+                veh_dict["earliest_arrival_time"],
+                veh_dict["trajectory"],
+                veh_dict["src_lane_id"],
+                veh_dict["dst_lane_id"],
+                veh_dict["vertex_passing_time"]
+            )
 
     def __ready_condition(self, v: Vertex) -> bool:
         if v.vehicle.state != VehicleState.WAITING and v.vehicle.state != VehicleState.BLOCKED:
