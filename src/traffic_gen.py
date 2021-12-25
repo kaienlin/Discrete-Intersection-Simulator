@@ -27,10 +27,21 @@ def add_random_traffic(sim: Simulator, max_time=300, max_vehicle_num=8, p=0.05):
                 sim.add_vehicle(f"vehicle-{veh_num}", t, traj, src_lane_id, dst_lane_id)
                 veh_num += 1
 
-def random_traffic_generator(intersection: Intersection, num_iter: int = 10000):
-    for _ in range(num_iter):
+def random_traffic_generator(
+    intersection: Intersection,
+    num_iter: int = 10000,
+    max_vehicle_num: int = 100,
+    poisson_parameter_list = [0.1, 0.3, 0.5, 0.7, 0.9]
+):
+    cond = lambda _: True
+    if num_iter > 0:
+        cond = lambda i: i < num_iter
+    i = 0
+    while cond(i):
         sim = Simulator(intersection)
-        add_random_traffic(sim, max_vehicle_num=random.randint(1, 8))
+        add_random_traffic(sim, max_vehicle_num=max_vehicle_num,
+                           p=random.choice(poisson_parameter_list) / 10)
+        i += 1
         yield sim
 
 def enumerate_traffic_patterns_generator(intersection: Intersection):
@@ -55,5 +66,4 @@ def enumerate_traffic_patterns_generator(intersection: Intersection):
                 sim.add_vehicle(f"vehicle-{veh_cnt}", 0, traj, src_lane_id, dst_lane_id)
                 veh_cnt += 1
         yield sim
-    
-           
+          
