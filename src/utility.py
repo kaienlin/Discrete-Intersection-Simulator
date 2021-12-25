@@ -1,6 +1,118 @@
+from __future__ import annotations
+
 import json
+from typing import Dict, Any, Set, List, Tuple
 
 from simulator import Intersection
+
+class Digraph:
+    def __init__(self):
+        self.name_to_idx: Dict[Any, int] = {}
+        self.idx_to_name: Dict[int, Any] = {}
+        self.adj: List[Set] = []
+
+    @property
+    def vertices(self) -> List:
+        return list(self.name_to_idx.keys())
+
+    def get_neighbors(self, v: Any) -> List:
+        v_idx = self.name_to_idx[v]
+        return [self.idx_to_name[u_idx] for u_idx in self.adj[v_idx]]
+
+    def print(self) -> None:
+        for i, neighbors in enumerate(self.adj):
+            print(self.idx_to_name[i], end=": ")
+            for u in sorted(neighbors):
+                print(self.idx_to_name[u], end=" ")
+            print()
+
+    def add_vertex(self, v: Any) -> int:
+        idx = self.name_to_idx.get(v, None)
+        if idx is None:
+            idx = len(self.adj)
+            self.name_to_idx[v] = idx
+            self.idx_to_name[idx] = v
+            self.adj.append(set())
+        return idx
+    
+    def add_edge(self, src: Any, dst: Any) -> None:
+        src_idx = self.add_vertex(src)
+        dst_idx = self.add_vertex(dst)
+        self.adj[src_idx].add(dst_idx)
+
+    def remove_edge(self, src: Any, dst: Any) -> None:
+        src_idx = self.name_to_idx.get(src, None)
+        dst_idx = self.name_to_idx.get(dst, None)
+        if src_idx is not None and dst_idx is not None:
+            self.adj[src_idx].remove(dst_idx)
+
+    def has_cycle(self) -> bool:
+        color: List[int] = [0 for _ in self.adj]
+        
+        def dfs(v: int) -> bool:
+            color[v] = 1
+            for u in self.adj[v]:
+                if color[u] == 0:
+                    if dfs(u):
+                        return True
+                elif color[u] == 1:
+                    return True
+            color[v] = 2
+            return False
+
+        for v in range(len(self.adj)):
+            if color[v] == 0:
+                if dfs(v):
+                    return True
+        
+        return False
+
+    def get_scc_graph(self) -> Digraph:
+        adj_rev: List[Set] = [set() for _ in self.adj]
+        for src, neighbors in enumerate(self.adj):
+            for u in neighbors:
+                adj_rev[u].add(src)
+        
+        visited: List = [False for _ in self.adj]
+        order: List = []
+        def dfs1(v: int) -> None:
+            visited[v] = True
+            for u in self.adj[v]:
+                if not visited[u]:
+                    dfs1(u)
+            order.append(v)
+        
+        for v in range(len(self.adj)):
+            if not visited[v]:
+                dfs1(v)
+        
+        visited = [False for _ in self.adj]
+        def dfs2(v: int, component: List) -> None:
+            visited[v] = True
+            component.append(v)
+            for u in adj_rev[v]:
+                if not visited[u]:
+                    dfs2(u, component)
+
+        scc_graph = type(self)()
+        home: Dict[Any, Tuple] = {}
+        for v in order[::-1]:
+            if not visited[v]:
+                component_idx = []
+                dfs2(v, component_idx)
+                component = tuple(sorted([self.idx_to_name[i] for i in component_idx]))
+                scc_graph.add_vertex(component)
+                for member in component_idx:
+                    home[member] = component
+        
+        for component in scc_graph.vertices:
+            for member in component:
+                for u in self.adj[self.name_to_idx[member]]:
+                    if component != home[u]:
+                        scc_graph.add_edge(component, home[u])
+        
+        return scc_graph
+
 
 def read_intersection_from_json(file_path):
     fp = open(file_path, "r")
