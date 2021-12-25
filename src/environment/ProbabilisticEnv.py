@@ -1,9 +1,11 @@
 from collections import namedtuple
 from typing import Tuple, List, Set
+from tqdm import tqdm
 import copy, math
 
 from simulator.intersection import Intersection
 from environment.BaseIntersectionEnv import BaseIntersectionEnv
+from utility import Digraph
 
 class ProbabilisticEnv(BaseIntersectionEnv):
     def __init__(
@@ -11,6 +13,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
         intersection: Intersection,
         queue_size_scale: Tuple[int] = (1,),
         traffic_density: float = 0.05,
+        enable_reachability_analysis: bool = False
     ):
         super().__init__(
             intersection, 
@@ -18,13 +21,16 @@ class ProbabilisticEnv(BaseIntersectionEnv):
         )
 
         self.traffic_density: float = traffic_density
+        self.enable_reachability_analysis: bool = enable_reachability_analysis
 
         self.P: List[List[List[Tuple[float, int, int]]]] = [
             [None for a in range(self.action_space_size)]
             for s in range(self.state_space_size)
         ]
 
-        self.reachable_states_no_op_table: List[Set[int]] = [None for s in range(self.state_space_size)]
+        if self.enable_reachability_analysis:
+            self.reachable_states_without_op: List[Set[int]] = [None for s in range(self.state_space_size)]
+            self.reachability_analysis()
 
     def get_higher_level_queue_size(self, queue_size: int):
         cur_level = self._discretize_queue_size(queue_size)
@@ -267,27 +273,37 @@ class ProbabilisticEnv(BaseIntersectionEnv):
         self.P[s][a] = res
         return res
 
-    def reachable_states_no_op(self, src_state: int) -> Set[int]:
-        if self.reachable_states_no_op_table[src_state] is not None:
-            return self.reachable_states_no_op_table[src_state]
-
-        visited = [False for _ in range(self.state_space_size)]
-        stack = [src_state]
-        reachable_states = set()
-        while len(stack) > 0:
-            s = stack.pop()
-            if visited[s]: continue
-            visited[s] = True
-            reachable_states.add(s)
+    def reachability_analysis(self) -> None:
+        state_transition_graph = Digraph()
+        print("Conducting reachability analysis...")
+        for s in tqdm(range(self.state_space_size), desc="Building state transition graph", ascii=True, leave=False):
             for _, next_s, _ in self.get_transitions(s, 0):
-                if not visited[next_s]:
-                    stack.append(next_s)
+                state_transition_graph.add_edge(s, next_s)
+        
+        print("Building condensation state transition graph...")
+        condensation_state_transition_graph = state_transition_graph.get_scc_graph()
 
-        self.reachable_states_no_op_table[src_state] = reachable_states
-        return reachable_states
+        pbar = tqdm(desc="Calculating reachable states", total=self.state_space_size, leave=False, ascii=True)
+        def dfs(scc: Tuple) -> None:
+            if self.reachable_states_without_op[scc[0]] is not None:
+                return
+            self.reachable_states_without_op[scc[0]] = set(scc)
+            for child in condensation_state_transition_graph.get_neighbors(scc):
+                dfs(child)
+                self.reachable_states_without_op[scc[0]].update(self.reachable_states_without_op[child[0]])
+            for member in scc[1:]:
+                self.reachable_states_without_op[member] = self.reachable_states_without_op[scc[0]]
+            pbar.update(len(scc))
+
+        for scc in condensation_state_transition_graph.vertices:
+            dfs(scc)
+        
+        pbar.close()
 
     def reachable(self, src_state: int, action: int, dst_state: int) -> bool:
+        if not self.enable_reachability_analysis:
+            raise Exception("ProbabilisticEnv.reachable: called without reachability analysis enabled")
         for _, next_s, _ in self.get_transitions(src_state, action):
-            if dst_state in self.reachable_states_no_op(next_s):
+            if dst_state in self.reachable_states_without_op[next_s]:
                 return True
         return False
