@@ -15,6 +15,8 @@ class Intersection:
         '''
         Add a conflict zone to the intersection.
         '''
+        if cz_id in ["^", "$"]:
+            raise Exception("[Intersection.add_conflict_zone] invalid cz_id")
         self.__conflict_zones.add(cz_id)
         self.__adjacency_list[cz_id] = set()
 
@@ -48,6 +50,8 @@ class Intersection:
         '''
         Add a source lane identifier and its associated CZs to the intersection.
         '''
+        if src_lane_id in ["^", "$"]:
+            raise Exception("[Intersection.add_src_lane] invalid src_lane_id")
         if src_lane_id in self.__src_lanes:
             raise Exception(f"[Intersection.add_src_lane] src_lane_id {src_lane_id} already exists.")
         self.__src_lanes[src_lane_id] = set(associated_CZs)
@@ -56,6 +60,8 @@ class Intersection:
         '''
         Add a destination lane identifier and its associated CZs to the intersection.
         '''
+        if dst_lane_id in ["^", "$"]:
+            raise Exception("[Intersection.add_dst_lane] invalid dst_lane_id")
         if dst_lane_id in self.__dst_lanes:
             raise Exception(f"[Intersection.add_dst_lane] dst_lane_id {dst_lane_id} already exists.")
         self.__dst_lanes[dst_lane_id] = set(associated_CZs)
@@ -82,7 +88,7 @@ class Intersection:
 
     @property
     def transitions(self) -> Set[Tuple[str, str]]:
-        return copy.deepcopy(self.transitions)
+        return copy.deepcopy(self.__transitions)
 
     @property
     def adjacency_list(self) -> Dict[str, Set[str]]:

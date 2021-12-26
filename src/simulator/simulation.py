@@ -181,6 +181,10 @@ class Simulator:
     @property
     def intersection(self) -> Intersection:
         return self.__intersection
+
+    @property
+    def vehicles(self) -> List[Vehicle]:
+        return list(self.__vehicles.values())
         
     @property
     def status(self) -> str:
