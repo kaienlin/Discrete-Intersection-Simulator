@@ -1,8 +1,10 @@
 import random
 import numpy as np
 from tqdm import tqdm
+import fire
 
 from environment import ProbabilisticEnv
+from simulator import Intersection
 from utility import read_intersection_from_json
 
 def value_iteration(env: ProbabilisticEnv, theta=1e-3, discount_factor=0.95):
@@ -33,12 +35,20 @@ def value_iteration(env: ProbabilisticEnv, theta=1e-3, discount_factor=0.95):
 
     return Q
 
-if __name__ == "__main__":
-    seed = 0
+def main(
+    intersection_file_path: str,
+    seed: int = 0,
+    Q_table_path: str = "DP.npy",
+    theta: float = 1e-3,
+    discount_factor: float = 0.95,
+):
+    intersection: Intersection = read_intersection_from_json(intersection_file_path)
     random.seed(seed)
     np.random.seed(seed)
-    intersection = read_intersection_from_json("../intersection_configs/1x1.json")
     env = ProbabilisticEnv(intersection)
-    DP_policy = value_iteration(env)
+    DP_policy = value_iteration(env, theta=theta, discount_factor=discount_factor)
+    np.save(Q_table_path, DP_policy)
 
-    np.save("./DP.npy", DP_policy)
+
+if __name__ == "__main__":
+    fire.Fire(main)

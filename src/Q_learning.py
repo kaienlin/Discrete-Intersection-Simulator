@@ -1,21 +1,21 @@
 import sys, random, os, pickle
-from typing import Iterable
+from typing import Generator, Iterable, Dict
 import numpy as np
+import fire
 
+import traffic_gen
 from environment import GraphBasedSimEnv
-from simulator import Simulator
+from simulator import Simulator, Intersection
+from utility import read_intersection_from_json
 
-from utility import get_4cz_intersection
-from traffic_gen import random_traffic_generator
-
-def load_Q_table(env):
-    if os.path.exists("./Q.npy"):
-        return np.load("./Q.npy")
+def load_Q_table(env, path):
+    if os.path.exists(path):
+        return np.load(path)
     else:
         return np.zeros((env.observation_space.n, env.action_space.n))
 
-def save_Q_table(Q):
-    np.save("./Q.npy", Q)
+def save_Q_table(Q, path):
+    np.save(path, Q)
 
 def train_Q(env: GraphBasedSimEnv, Q, seen_state=None, prob_env=None, alpha=0.1, gamma=1.0, epsilon=0.2):
     done = False
@@ -54,7 +54,12 @@ def train_Q(env: GraphBasedSimEnv, Q, seen_state=None, prob_env=None, alpha=0.1,
         if seen_state is not None:
             seen_state.add(state)
     
-def Q_learning(simulator_generator: Iterable[Simulator], epoch_per_traffic=100):
+def Q_learning(
+    simulator_generator: Iterable[Simulator],
+    Q_table_path: str = "Q.npy",
+    epoch_per_traffic: int = 10,
+    epoch_per_checkpoint: int = 1000
+):
     # create simulator and environment
     sim = next(simulator_generator)
     env = GraphBasedSimEnv(sim)
@@ -65,7 +70,7 @@ def Q_learning(simulator_generator: Iterable[Simulator], epoch_per_traffic=100):
             num_actable_states += 1
     print(f"number of actable states = {num_actable_states}") 
 
-    Q = load_Q_table(env)
+    Q = load_Q_table(env, Q_table_path)
     seen_state = pickle.load(open("seen.p", "rb")) if os.path.exists("seen.p") else set()
 
     epoch = 0
@@ -80,19 +85,29 @@ def Q_learning(simulator_generator: Iterable[Simulator], epoch_per_traffic=100):
                 break
             env.reset(sim)
 
-        if (epoch + 1) % 10000 == 0:
-            save_Q_table(Q)
+        if (epoch + 1) % epoch_per_checkpoint == 0:
+            save_Q_table(Q, Q_table_path)
             pickle.dump(seen_state, open("seen.p", "wb"))
         epoch += 1
 
-    save_Q_table(Q)
+    save_Q_table(Q, Q_table_path)
     pickle.dump(seen_state, open("seen.p", "wb"))
+
+def main(
+    intersection_file_path: str,
+    seed: int = 0,
+    traffic_generator_name: str = "random_traffic_generator",
+    traffic_generator_kwargs: Dict = {},
+    Q_table_path: str = "Q.npy",
+    epoch_per_traffic: int = 10,
+    epoch_per_checkpoint: int = 1000
+):
+    intersection: Intersection = read_intersection_from_json(intersection_file_path)
+    random.seed(seed)
+    np.random.seed(seed)
+    sim_gen: Iterable[Simulator] = getattr(traffic_gen, traffic_generator_name)(intersection, **traffic_generator_kwargs)
+    Q_learning(sim_gen, Q_table_path, epoch_per_traffic=epoch_per_traffic, epoch_per_checkpoint=epoch_per_checkpoint)
 
 
 if __name__ == "__main__":
-    seed = 12245
-    random.seed(seed)
-    np.random.seed(seed)
-    intersection = get_4cz_intersection()
-    sim_gen = random_traffic_generator(intersection, num_iter=0)
-    Q_learning(sim_gen)
+    fire.Fire(main)
