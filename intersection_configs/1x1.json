@@ -1,0 +1,38 @@
+{
+    "conflict_zones": {
+        "1": {
+
+        }
+    },
+    "source_lanes": {
+        "N": {
+            "associated_conflict_zones": ["1"]
+        },
+        "E": {
+            "associated_conflict_zones": ["1"]
+        },
+        "W": {
+            "associated_conflict_zones": ["1"]
+        },
+        "S": {
+            "associated_conflict_zones": ["1"]
+        }
+    },
+    "destination_lanes": {
+        "N": {
+            "associated_conflict_zones": ["1"]
+        },
+        "E": {
+            "associated_conflict_zones": ["1"]
+        },
+        "W": {
+            "associated_conflict_zones": ["1"]
+        },
+        "S": {
+            "associated_conflict_zones": ["1"]
+        }
+    },
+    "trajectories": [
+        ["1"]
+    ]
+}
