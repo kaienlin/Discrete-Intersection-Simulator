@@ -61,15 +61,21 @@ class ProbabilisticEnv(BaseIntersectionEnv):
         origin_s_dec: BaseIntersectionEnv.DecodedState = self.decode_state(s)
         a_dec: BaseIntersectionEnv.DecodedAction = self.decode_action(a)
 
-        cost: int = 0
+        cost: float = 0.0
+        num_vehicles = 0
         for src_lane_state in origin_s_dec.src_lane_state.values():
             if src_lane_state.vehicle_state != "moving":
                 cost += 1
+            if src_lane_state.vehicle_state != "":
+                num_vehicles += 1
             cost += src_lane_state.queue_size
+            num_vehicles += src_lane_state.queue_size
 
         for cz_state in origin_s_dec.cz_state.values():
             if cz_state.vehicle_state != "moving":
                 cost += 1
+            if cz_state.vehicle_state != "":
+                num_vehicles += 1
 
         def explore_cz(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
             '''
@@ -242,6 +248,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             state_ref.vehicle_state = ""
             state_ref.next_position = ""
 
+            cost -= 1
             # If there exist other waiting vehicles, then the cost is 0
             # This is for making moving multiple vehicles in one time step possible
             for src_lane_state in sp_init.src_lane_state.values():
@@ -250,6 +257,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             for cz_state in sp_init.cz_state.values():
                 if cz_state.vehicle_state == "waiting":
                     cost = 0
+            cost /= num_vehicles
 
             if next_pos == "$":
                 explore_queue_inc(0, 1.0, sp_init)
