@@ -1,8 +1,10 @@
 import random
-from typing import Dict, Set
+from typing import Dict, List, Set
 from pathlib import Path
+import fire
 
 from simulator import Intersection, Simulator
+from utility import read_intersection_from_json
 
 def get_src_traj_dict(intersection: Intersection):
     traj_per_src = {}
@@ -54,17 +56,23 @@ def datadir_traffic_generator(intersection: Intersection, data_dir):
         sim.load_traffic(traffic_file)
         yield sim
 
-
-if __name__ == "__main__":
-    from utility import get_4cz_intersection
-    import numpy as np
-
-    data_dir = Path("./validation/4cz/")
+def main(
+    intersection_file_path: str,
+    output_dir: str = "./",
+    seed: int = 0,
+    num: int = 10,
+    poisson_parameter_list: List = [0.1, 0.3, 0.5]
+):
+    random.seed(seed)
+    intersection: Intersection = read_intersection_from_json(intersection_file_path)
+    data_dir = Path(output_dir)
     if not data_dir.exists():
         data_dir.mkdir(parents=True)
 
-    intersection = get_4cz_intersection()
-    random.seed(0)
-    gen = random_traffic_generator(intersection, num_iter=10, poisson_parameter_list=np.arange(0, 1, 0.01).tolist())
+    gen = random_traffic_generator(intersection, num_iter=num, poisson_parameter_list=poisson_parameter_list)
     for i, sim in enumerate(gen):
         sim.dump_traffic(data_dir / f"{i}.json")
+
+
+if __name__ == "__main__":
+    fire.Fire(main)
