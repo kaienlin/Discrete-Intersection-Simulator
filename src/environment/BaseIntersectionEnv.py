@@ -156,6 +156,17 @@ class BaseIntersectionEnv(gym.Env):
         raw_state = self.compressed_to_raw_state[state]
         return self._is_actable_raw_state(raw_state)
 
+    def is_effective_action_of_state(self, action: int, state: int) -> bool:
+        decoded_state: BaseIntersectionEnv.DecodedState = self.decode_state(state)
+        decoded_action: BaseIntersectionEnv.DecodedAction = self.decode_action(action)
+        if decoded_action.type == "":
+            return True
+        if decoded_action.type == "src" and decoded_state.src_lane_state[decoded_action.id].vehicle_state == "waiting":
+            return True
+        if decoded_action.type == "cz" and decoded_state.cz_state[decoded_action.id].vehicle_state == "waiting":
+            return True
+        return False
+
     def _discretize_queue_size(self, queue_size: int) -> int:
         for idx, threshold in enumerate(self.queue_size_scale):
             if queue_size < threshold:

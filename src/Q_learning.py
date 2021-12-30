@@ -22,11 +22,12 @@ def train_Q(env: GraphBasedSimEnv, Q, seen_state=None, prob_env=None, alpha=0.1,
     state = env.reset()
     if seen_state is not None:
         seen_state.add(state)
-    
+
     while not done:
+        effective_actions = [a for a in range(env.action_space_size) if env.is_effective_action_of_state(a, state)]
         # epsilon-greedy
         if random.uniform(0, 1) < epsilon:
-            action = random.randint(0, env.action_space_size - 1)
+            action = random.choice(effective_actions)
         else:
             action = np.argmin(Q[state])
 
@@ -73,11 +74,16 @@ def Q_learning(
     Q = load_Q_table(env, Q_table_path)
     seen_state = pickle.load(open("seen.p", "rb")) if os.path.exists("seen.p") else set()
 
+    for s in range(env.state_space_size):
+        for a in range(env.action_space_size):
+            if not env.is_effective_action_of_state(a, s):
+                Q[s][a] = np.inf
+
     epoch = 0
     while True:
         print(f"epoch = {epoch}: {len(seen_state)} / {num_actable_states} states explored")
         train_Q(env, Q, seen_state, prob_env=None)
-        
+
         if (epoch + 1) % epoch_per_traffic == 0:
             try:
                 sim = next(simulator_generator)
