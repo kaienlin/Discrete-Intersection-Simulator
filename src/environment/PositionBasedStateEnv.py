@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from simulator.intersection import Intersection
 
-class BaseIntersectionEnv(gym.Env):
+class PositionBasedStateEnv(gym.Env):
     TERMINAL_STATE = 0
     DEADLOCK_COST = 1e9
     vehicle_states_in_cz: Tuple[str] = ("waiting", "blocked", "moving")
@@ -91,7 +91,7 @@ class BaseIntersectionEnv(gym.Env):
                + len(self.intersection.src_lanes) + 1
 
     def _is_invalid_raw_state(self, raw_state: int) -> bool:
-        decoded_state: BaseIntersectionEnv.DecodedState = self._decode_raw_state(raw_state)
+        decoded_state: PositionBasedStateEnv.DecodedState = self._decode_raw_state(raw_state)
         occupied_cz: Set = set()
         for cz_id, cz_state in decoded_state.cz_state.items():
             if cz_state.next_position:
@@ -113,7 +113,7 @@ class BaseIntersectionEnv(gym.Env):
         return self._is_invalid_raw_state(raw_state)
 
     def _is_deadlock_raw_state(self, raw_state: int) -> bool:
-        decoded_state: BaseIntersectionEnv.DecodedState = self._decode_raw_state(raw_state)
+        decoded_state: PositionBasedStateEnv.DecodedState = self._decode_raw_state(raw_state)
         adj = {cz_id: [] for cz_id in self.sorted_cz_ids}
         for cz_id, cz_state in decoded_state.cz_state.items():
             next_pos = cz_state.next_position
@@ -143,7 +143,7 @@ class BaseIntersectionEnv(gym.Env):
         return self.deadlock_state_table[state]
 
     def _is_actable_raw_state(self, raw_state: int) -> bool:
-        decoded_state: BaseIntersectionEnv.DecodedState = self._decode_raw_state(raw_state)
+        decoded_state: PositionBasedStateEnv.DecodedState = self._decode_raw_state(raw_state)
         for src_lane_state in decoded_state.src_lane_state.values():
             if src_lane_state.vehicle_state == "waiting":
                 return True
@@ -157,8 +157,8 @@ class BaseIntersectionEnv(gym.Env):
         return self._is_actable_raw_state(raw_state)
 
     def is_effective_action_of_state(self, action: int, state: int) -> bool:
-        decoded_state: BaseIntersectionEnv.DecodedState = self.decode_state(state)
-        decoded_action: BaseIntersectionEnv.DecodedAction = self.decode_action(action)
+        decoded_state: PositionBasedStateEnv.DecodedState = self.decode_state(state)
+        decoded_action: PositionBasedStateEnv.DecodedAction = self.decode_action(action)
         if decoded_action.type == "":
             return True
         if decoded_action.type == "src" and decoded_state.src_lane_state[decoded_action.id].vehicle_state == "waiting":
@@ -267,13 +267,13 @@ class BaseIntersectionEnv(gym.Env):
     @lru_cache(maxsize=16)
     def decode_action(self, action: int) -> DecodedAction:
         if action == 0:
-            return BaseIntersectionEnv.DecodedAction()
+            return PositionBasedStateEnv.DecodedAction()
         num_src_lane = len(self.sorted_src_lane_ids)
         num_cz = len(self.sorted_src_lane_ids)
         if 1 <= action <= num_src_lane:
-            return BaseIntersectionEnv.DecodedAction(type="src", id=self.sorted_src_lane_ids[action - 1])
+            return PositionBasedStateEnv.DecodedAction(type="src", id=self.sorted_src_lane_ids[action - 1])
         elif num_src_lane + 1 <= action <= num_cz + num_src_lane:
-            return BaseIntersectionEnv.DecodedAction(type="cz", id=self.sorted_cz_ids[action - num_src_lane - 1])
+            return PositionBasedStateEnv.DecodedAction(type="cz", id=self.sorted_cz_ids[action - num_src_lane - 1])
         else:
             raise Exception(f"BaseIntersectionEnv.decode_action: Invalid action {action}")
 
@@ -291,8 +291,8 @@ class BaseIntersectionEnv(gym.Env):
 
     @dataclass
     class DecodedState:
-        src_lane_state: Dict[str, BaseIntersectionEnv.SrcLaneState] = field(default_factory=dict)
-        cz_state: Dict[str, BaseIntersectionEnv.CzState] = field(default_factory=dict)
+        src_lane_state: Dict[str, PositionBasedStateEnv.SrcLaneState] = field(default_factory=dict)
+        cz_state: Dict[str, PositionBasedStateEnv.CzState] = field(default_factory=dict)
 
         def print(self) -> None:
             print("1. Source lane states:")

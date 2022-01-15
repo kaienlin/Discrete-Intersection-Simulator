@@ -4,10 +4,10 @@ from tqdm import tqdm
 import copy, math
 
 from simulator.intersection import Intersection
-from environment.BaseIntersectionEnv import BaseIntersectionEnv
+from environment.PositionBasedStateEnv import PositionBasedStateEnv
 from utility import Digraph
 
-class ProbabilisticEnv(BaseIntersectionEnv):
+class ProbabilisticEnv(PositionBasedStateEnv):
     def __init__(
         self,
         intersection: Intersection,
@@ -58,8 +58,8 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             return [(1.0, self.TERMINAL_STATE, self.DEADLOCK_COST)]
 
         res: List[Tuple[float, int, int]] = []
-        origin_s_dec: BaseIntersectionEnv.DecodedState = self.decode_state(s)
-        a_dec: BaseIntersectionEnv.DecodedAction = self.decode_action(a)
+        origin_s_dec: PositionBasedStateEnv.DecodedState = self.decode_state(s)
+        a_dec: PositionBasedStateEnv.DecodedAction = self.decode_action(a)
 
         cost: float = 0.0
         num_vehicles = 0
@@ -77,7 +77,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             if cz_state.vehicle_state != "":
                 num_vehicles += 1
 
-        def explore_cz(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
+        def explore_cz(i: int, prob: float, sp: PositionBasedStateEnv.DecodedState):
             '''
             Explore the possible changes to the vehicle on a specific conflict zone
             '''
@@ -135,7 +135,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
                 # no vehicle on this cz
                 explore_cz(i + 1, prob, sp)
 
-        def explore_src(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
+        def explore_src(i: int, prob: float, sp: PositionBasedStateEnv.DecodedState):
             '''
             Explore the possibility that a vehicle in the queue of a specific source lane starts waiting
             '''
@@ -158,7 +158,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             else:
                 explore_src(i + 1, prob, sp)
 
-        def explore_queue_dec(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
+        def explore_queue_dec(i: int, prob: float, sp: PositionBasedStateEnv.DecodedState):
             if i == len(self.sorted_src_lane_ids):
                 explore_src(0, prob, sp)
                 return
@@ -201,7 +201,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             else:
                 explore_queue_dec(i + 1, prob, sp)
 
-        def explore_queue_inc(i: int, prob: float, sp: BaseIntersectionEnv.DecodedState):
+        def explore_queue_inc(i: int, prob: float, sp: PositionBasedStateEnv.DecodedState):
             '''
             Explore the possibility that a specific source lane's queue size increases for one level
             '''
@@ -264,7 +264,7 @@ class ProbabilisticEnv(BaseIntersectionEnv):
             else:
                 trans = self.transitions_of_cz[next_pos]
                 for next2_pos in trans:
-                    sp_init.cz_state[next_pos] = BaseIntersectionEnv.CzState(
+                    sp_init.cz_state[next_pos] = PositionBasedStateEnv.CzState(
                         vehicle_state="moving",
                         next_position=next2_pos
                     )

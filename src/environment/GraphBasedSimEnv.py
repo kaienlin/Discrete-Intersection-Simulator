@@ -3,9 +3,9 @@ from typing import Iterable, Set, Tuple
 
 from simulator.simulation import Simulator
 from simulator.vehicle import Vehicle, VehicleState
-from environment.BaseIntersectionEnv import BaseIntersectionEnv
+from environment.PositionBasedStateEnv import PositionBasedStateEnv
  
-class GraphBasedSimEnv(BaseIntersectionEnv):
+class GraphBasedSimEnv(PositionBasedStateEnv):
     def __init__(self, sim: Simulator, queue_size_scale: Tuple[int] = (1,)):
         super().__init__(
             sim.intersection,
@@ -112,7 +112,7 @@ class GraphBasedSimEnv(BaseIntersectionEnv):
         return self.encode_state(decoded_state)
 
     def __decode_action_to_vehicle_id(self, action: int) -> str:
-        decoded_action: BaseIntersectionEnv.DecodedAction = self.decode_action(action)
+        decoded_action: PositionBasedStateEnv.DecodedAction = self.decode_action(action)
         vehicle = None
         
         if decoded_action.type == "src":

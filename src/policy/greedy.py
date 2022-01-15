@@ -2,11 +2,11 @@ from typing import Dict, Set
 import itertools
 
 from .base import Policy
-from environment.BaseIntersectionEnv import BaseIntersectionEnv
+from environment.PositionBasedStateEnv import PositionBasedStateEnv
 from utility import Digraph
 
 class IGreedyPolicy(Policy):
-    def __init__(self, env: BaseIntersectionEnv):
+    def __init__(self, env: PositionBasedStateEnv):
         self.env = env
         self.transitions_of_cz: Dict[str, Set[str]] = {cz_id: set() for cz_id in env.intersection.conflict_zones}
 
@@ -28,18 +28,18 @@ class IGreedyPolicy(Policy):
                 if pos_state.next_position != "$":
                     for next2pos in self.transitions_of_cz[pos_state.next_position]:
                         G.add_edge(pos_state.next_position, next2pos)
-                        if isinstance(pos_state, BaseIntersectionEnv.CzState):
+                        if isinstance(pos_state, PositionBasedStateEnv.CzState):
                             G.remove_edge(pos, pos_state.next_position)
                         cyclic = G.has_cycle()
                         G.remove_edge(pos_state.next_position, next2pos)
-                        if isinstance(pos_state, BaseIntersectionEnv.CzState):
+                        if isinstance(pos_state, PositionBasedStateEnv.CzState):
                             G.add_edge(pos, pos_state.next_position)
                         if cyclic:
                             safe = False
                             break
                 if safe:
-                    t: str = "src" if isinstance(pos_state, BaseIntersectionEnv.SrcLaneState) else "cz"
-                    action = BaseIntersectionEnv.DecodedAction(type=t, id=pos)
+                    t: str = "src" if isinstance(pos_state, PositionBasedStateEnv.SrcLaneState) else "cz"
+                    action = PositionBasedStateEnv.DecodedAction(type=t, id=pos)
                     return self.env.encode_action(action)
 
-        return self.env.encode_action(BaseIntersectionEnv.DecodedAction(type="", id=""))
+        return self.env.encode_action(PositionBasedStateEnv.DecodedAction(type="", id=""))
