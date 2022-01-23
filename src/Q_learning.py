@@ -4,7 +4,7 @@ import numpy as np
 import fire
 
 import traffic_gen
-from environment import GraphBasedSimEnv
+import environment
 from simulator import Simulator, Intersection
 from utility import read_intersection_from_json
 
@@ -17,7 +17,7 @@ def load_Q_table(env, path):
 def save_Q_table(Q, path):
     np.save(path, Q)
 
-def train_Q(env: GraphBasedSimEnv, Q, seen_state=None, prob_env=None, alpha=0.1, gamma=1.0, epsilon=0.2):
+def train_Q(env: environment.position_based.GraphBasedSimEnv, Q, seen_state=None, prob_env=None, alpha=0.1, gamma=1.0, epsilon=0.2):
     done = False
     state = env.reset()
     if seen_state is not None:
@@ -63,7 +63,7 @@ def Q_learning(
 ):
     # create simulator and environment
     sim = next(simulator_generator)
-    env = GraphBasedSimEnv(sim)
+    env = environment.position_based.GraphBasedSimEnv(sim)
 
     num_actable_states = 0
     for s in range(env.state_space_size):

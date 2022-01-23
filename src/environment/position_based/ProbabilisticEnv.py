@@ -4,7 +4,7 @@ from tqdm import tqdm
 import copy, math
 
 from simulator.intersection import Intersection
-from environment.PositionBasedStateEnv import PositionBasedStateEnv
+from environment.position_based.BaseEnv import PositionBasedStateEnv
 from utility import Digraph
 
 class ProbabilisticEnv(PositionBasedStateEnv):

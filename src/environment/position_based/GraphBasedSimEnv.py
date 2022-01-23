@@ -3,7 +3,7 @@ from typing import Iterable, Set, Tuple
 
 from simulator.simulation import Simulator
 from simulator.vehicle import Vehicle, VehicleState
-from environment.PositionBasedStateEnv import PositionBasedStateEnv
+from environment.position_based.BaseEnv import PositionBasedStateEnv
  
 class GraphBasedSimEnv(PositionBasedStateEnv):
     def __init__(self, sim: Simulator, queue_size_scale: Tuple[int] = (1,)):

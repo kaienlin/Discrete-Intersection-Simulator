@@ -3,16 +3,20 @@ import numpy as np
 from tqdm import tqdm
 import fire
 
-from environment import ProbabilisticEnv
+import environment
 from simulator import Intersection
 from utility import read_intersection_from_json
 
-def value_iteration(env: ProbabilisticEnv, theta=1e-3, discount_factor=0.95):
+def value_iteration(env: environment.position_based.ProbabilisticEnv, theta=1e-3, discount_factor=0.95):
     def one_step_lookahead(state, V):
         A = np.zeros(env.action_space_size)
-        for a in range(env.action_space_size):
+        effective_actions = [a for a in range(env.action_space_size) if env.is_effective_action_of_state(a, state)]
+        for a in effective_actions:
             for prob, next_state, cost in env.get_transitions(state, a):
                 A[a] += prob * (cost + discount_factor * V[next_state])
+        for a in range(env.action_space_size):
+            if a not in effective_actions:
+                A[a] = np.inf
         return A
     
     V = np.zeros(env.state_space_size)
@@ -45,7 +49,7 @@ def main(
     intersection: Intersection = read_intersection_from_json(intersection_file_path)
     random.seed(seed)
     np.random.seed(seed)
-    env = ProbabilisticEnv(intersection)
+    env = environment.position_based.ProbabilisticEnv(intersection)
     DP_policy = value_iteration(env, theta=theta, discount_factor=discount_factor)
     np.save(Q_table_path, DP_policy)
 
