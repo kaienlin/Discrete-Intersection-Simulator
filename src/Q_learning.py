@@ -12,12 +12,12 @@ def load_Q_table(env, path):
     if os.path.exists(path):
         return np.load(path)
     else:
-        return np.zeros((env.observation_space.n, env.action_space.n))
+        return np.zeros((20000000, 9))
 
 def save_Q_table(Q, path):
     np.save(path, Q)
 
-def train_Q(env: environment.position_based.SimulatorEnv, Q, seen_state=None, prob_env=None, alpha=0.1, gamma=1.0, epsilon=0.2):
+def train_Q(env: environment.vehicle_based.SimulatorEnv, Q, seen_state=None, prob_env=None, alpha=0.1, gamma=1.0, epsilon=0.2):
     done = False
     state = env.reset()
     if seen_state is not None:
@@ -29,7 +29,7 @@ def train_Q(env: environment.position_based.SimulatorEnv, Q, seen_state=None, pr
         if random.uniform(0, 1) < epsilon:
             action = random.choice(effective_actions)
         else:
-            action = np.argmin(Q[state])
+            action = effective_actions[Q[state][effective_actions].argmin()]
 
         # take action
         next_state, cost, done, _ = env.step(action)
@@ -63,7 +63,7 @@ def Q_learning(
 ):
     # create simulator and environment
     sim = next(simulator_generator)
-    env = environment.position_based.SimulatorEnv(sim)
+    env = environment.vehicle_based.SimulatorEnv(sim)
 
     num_actable_states = 0
     for s in range(env.state_space_size):
