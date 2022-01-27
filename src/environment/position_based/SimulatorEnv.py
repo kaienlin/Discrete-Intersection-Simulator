@@ -5,7 +5,7 @@ from simulator.simulation import Simulator
 from simulator.vehicle import Vehicle, VehicleState
 from environment.position_based.BaseEnv import PositionBasedStateEnv
  
-class GraphBasedSimEnv(PositionBasedStateEnv):
+class SimulatorEnv(PositionBasedStateEnv):
     def __init__(self, sim: Simulator, queue_size_scale: Tuple[int] = (1,)):
         super().__init__(
             sim.intersection,
