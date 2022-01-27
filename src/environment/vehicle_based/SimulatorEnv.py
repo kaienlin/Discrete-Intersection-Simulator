@@ -65,7 +65,7 @@ class SimulatorEnv(VehicleBasedStateEnv):
             assert(self.is_deadlock_state(next_state))
             waiting_time_sum += self.DEADLOCK_COST
 
-        return next_state, waiting_time_sum / len(self.sim.vehicles), terminal, {}
+        return next_state, waiting_time_sum, terminal, {}
 
     def __is_idle_state(self, state: VehicleState) -> bool:
         return state == VehicleState.WAITING or state == VehicleState.BLOCKED

@@ -18,7 +18,7 @@ def get_src_traj_dict(intersection: Intersection):
                 traj_per_src[src_lane_id][traj] = dst_lane_id
     return traj_per_src
 
-def add_random_traffic(sim: Simulator, max_time=300, max_vehicle_num=8, p=0.05):
+def add_random_traffic(sim: Simulator, max_time=2, max_vehicle_num=8, p=0.05):
     src_to_traj = get_src_traj_dict(sim.intersection)
     veh_num = 0
     for t in range(max_time):
