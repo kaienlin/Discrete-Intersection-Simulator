@@ -17,7 +17,7 @@ def load_Q_table(env, path):
 def save_Q_table(Q, path):
     np.save(path, Q)
 
-def train_Q(env: environment.vehicle_based.SimulatorEnv, Q, seen_state=None, prob_env=None, alpha=0.1, gamma=1.0, epsilon=0.2):
+def train_Q(env: environment.vehicle_based.SimulatorEnv, Q, seen_state=None, prob_env=None, alpha=0.1, gamma=0.9, epsilon=0.2):
     done = False
     state = env.reset()
     if seen_state is not None:
@@ -50,6 +50,9 @@ def train_Q(env: environment.vehicle_based.SimulatorEnv, Q, seen_state=None, pro
         # update Q table
         next_min = np.min(Q[next_state])
         Q[state, action] = (1 - alpha) * Q[state, action] + alpha * (cost + gamma * next_min)
+        for a in range(env.action_space_size):
+            if a not in effective_actions:
+                Q[state, a] = np.inf
 
         state = next_state
         if seen_state is not None:
@@ -77,12 +80,16 @@ def Q_learning(
     for s in range(env.state_space_size):
         for a in range(env.action_space_size):
             if not env.is_effective_action_of_state(a, s):
-                Q[s][a] = np.inf
+                pass
+                #Q[s][a] = np.inf
 
     epoch = 0
     while True:
         print(f"epoch = {epoch}: {len(seen_state)} / {num_actable_states} states explored")
         train_Q(env, Q, seen_state, prob_env=None)
+
+        if epoch > 1000:
+            print(Q[31])
 
         if (epoch + 1) % epoch_per_traffic == 0:
             try:
