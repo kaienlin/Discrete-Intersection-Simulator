@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import gym
-from typing import Literal, Tuple, Dict, Set, List
+from typing import Literal, Tuple, Dict, List
 from functools import lru_cache
 from dataclasses import dataclass, field
 
@@ -20,8 +20,8 @@ class VehicleBasedStateEnv(gym.Env):
         self.intersection: Intersection = intersection
         self.max_vehicle_num: int = max_vehicle_num
 
-        self.state_to_int: Dict[VehicleBasedStateEnv.VehicleState, int] = {}
-        self.int_to_state: List[VehicleBasedStateEnv.VehicleState] = []
+        self.state_to_int: Dict[Tuple[VehicleBasedStateEnv.VehicleState], int] = {}
+        self.int_to_state: List[Tuple[VehicleBasedStateEnv.VehicleState]] = []
 
     @property
     def state_space_size(self) -> int:
@@ -29,9 +29,17 @@ class VehicleBasedStateEnv(gym.Env):
 
     @property
     def action_space_size(self) -> int:
-        return self.max_vehicle_num
+        return self.max_vehicle_num + 1
 
-    def encode_state(self, state: VehicleBasedStateEnv.VehicleState) -> int:
+    def is_effective_action_of_state(self, action: int, state: int) -> bool:
+        if action == 0:
+            return True
+        vehicles = self.decode_state(state)
+        return not (action > len(vehicles) or vehicles[action - 1].state != "waiting")
+
+    @lru_cache(maxsize=2)
+    def encode_state(self, state: Tuple[VehicleBasedStateEnv.VehicleState]) -> int:
+        state = tuple(sorted(state))
         res = self.state_to_int.get(state, len(self.state_to_int))
         if res < len(self.state_to_int):
             return res
@@ -40,7 +48,7 @@ class VehicleBasedStateEnv(gym.Env):
         return res
 
     def decode_state(self, s: int) -> VehicleBasedStateEnv.VehicleState:
-        if s < len(self.state_dict):
+        if s < len(self.int_to_state):
             return self.int_to_state[s]
         raise Exception("VehicleBasedStateEnv: trying to decode unseen state")
     
