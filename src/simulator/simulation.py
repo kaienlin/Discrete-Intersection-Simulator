@@ -238,7 +238,7 @@ class Simulator:
             if not self.__prev_moved:
                 self.__timestamp += 1
         elif not self.__event_queue.empty():
-            self.__timestamp = self.__event_queue.top().time
+            self.__timestamp = min(self.__event_queue.top().time, self.__timestamp + 1)
         else:
             if any([veh.state != VehicleState.LEFT for veh in self.__vehicles.values()]):
                 self.__status = "DEADLOCK"

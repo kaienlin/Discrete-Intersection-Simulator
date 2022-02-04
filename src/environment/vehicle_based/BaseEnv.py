@@ -31,11 +31,15 @@ class VehicleBasedStateEnv(gym.Env):
     def action_space_size(self) -> int:
         return self.max_vehicle_num + 1
 
-    def is_effective_action_of_state(self, action: int, state: int) -> bool:
-        if action == 0:
+    def is_actable_state(self, s: int) -> int:
+        vehicles = self.decode_state(s)
+        return any([v.state == "waiting" for v in vehicles])
+
+    def is_effective_action_of_state(self, a: int, s: int) -> bool:
+        if a == 0:
             return True
-        vehicles = self.decode_state(state)
-        return not (action > len(vehicles) or vehicles[action - 1].state != "waiting")
+        vehicles = self.decode_state(s)
+        return not (a > len(vehicles) or vehicles[a - 1].state != "waiting")
 
     @lru_cache(maxsize=2)
     def encode_state(self, state: Tuple[VehicleBasedStateEnv.VehicleState]) -> int:

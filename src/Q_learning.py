@@ -88,9 +88,6 @@ def Q_learning(
         print(f"epoch = {epoch}: {len(seen_state)} / {num_actable_states} states explored")
         train_Q(env, Q, seen_state, prob_env=None)
 
-        if epoch > 1000:
-            print(Q[31])
-
         if (epoch + 1) % epoch_per_traffic == 0:
             try:
                 sim = next(simulator_generator)

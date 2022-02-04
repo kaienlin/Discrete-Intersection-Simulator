@@ -43,26 +43,19 @@ class SimulatorEnv(VehicleBasedStateEnv):
         self.sim.simulation_step_act(veh_id)
 
         waiting_time_sum = 0
-        vehicles = []
 
-        while True:
-            timestamp, vehicles = self.sim.simulation_step_report()
-            num_waiting = len(self.prev_idle_veh) - (1 if veh_id in self.prev_idle_veh else 0)
-            waiting_time_sum += (timestamp - self.prev_timestamp) * num_waiting
-            self.prev_timestamp = timestamp
-            self.prev_idle_veh = set([veh.id for veh in vehicles if self.__is_idle_state(veh.state)])
-
-            # loop until reaching a state containing at least one waiting vehicles or terminal
-            if len([veh.id for veh in vehicles if veh.state == VehicleState.WAITING]) > 0 or self.sim.status != "RUNNING":
-                break
+        timestamp, vehicles = self.sim.simulation_step_report()
+        num_waiting = len(self.prev_idle_veh) - (1 if veh_id in self.prev_idle_veh else 0)
+        waiting_time_sum += (timestamp - self.prev_timestamp) * num_waiting
+        self.prev_timestamp = timestamp
 
         next_state, included_vehicles = self.__encode_state_from_vehicles(vehicles)
         self.prev_state = next_state
         self.prev_vehicles = included_vehicles
+        self.prev_idle_veh = set([veh.id for veh in vehicles if self.__is_idle_state(veh.state)])
 
         terminal = self.sim.status != "RUNNING"
         if terminal and self.sim.status == "DEADLOCK":
-            assert(self.is_deadlock_state(next_state))
             waiting_time_sum += self.DEADLOCK_COST
 
         return next_state, waiting_time_sum, terminal, {}
