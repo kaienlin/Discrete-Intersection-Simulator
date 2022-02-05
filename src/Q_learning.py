@@ -6,16 +6,16 @@ import fire
 import traffic_gen
 import environment
 from simulator import Simulator, Intersection
-from utility import read_intersection_from_json
+from utility import read_intersection_from_json, DynamicQtable
 
 def load_Q_table(env, path):
+    table = DynamicQtable(env.action_space_size, init_state_num=1<<20)
     if os.path.exists(path):
-        return np.load(path)
-    else:
-        return np.zeros((20000000, 9))
+        table.load(path)
+    return table
 
-def save_Q_table(Q, path):
-    np.save(path, Q)
+def save_Q_table(Q: DynamicQtable, path):
+    Q.save(path)
 
 def train_Q(env: environment.vehicle_based.SimulatorEnv, Q, seen_state=None, prob_env=None, alpha=0.1, gamma=0.9, epsilon=0.2):
     done = False

@@ -2,8 +2,45 @@ from __future__ import annotations
 
 import json
 from typing import Dict, Any, Set, List, Tuple
+import numpy as np
 
 from simulator import Intersection
+
+class DynamicQtable:
+    def __init__(self, action_num: int, init_state_num: int = 1<<16):
+        self.__arr = np.zeros((init_state_num, action_num))
+    
+    def __getitem__(self, items):
+        if type(items) is int:
+            return self.access_row(items)
+        elif type(items) is tuple:
+            assert all([type(i) is int for i in items])
+            assert len(items) <= 2
+            return self.access_row(items[0])[items[1]]
+        else:
+            raise Exception("[DynamicQtable] unsupported indices")
+
+    def __setitem__(self, items, values):
+        if type(items) is int:
+            np.copyto(self.access_row(items), values)
+        elif type(items) is tuple:
+            assert all([type(i) is int for i in items])
+            assert len(items) <= 2
+            np.put(self.access_row(items[0]), items[1], values)
+        else:
+            raise Exception("[DynamicQtable] unsupported indices")
+
+    def access_row(self, row_index: int):
+        while row_index >= self.__arr.shape[0]:
+            self.__arr = np.append(self.__arr, np.zeros((self.__arr.shape[0], self.__arr.shape[1])), axis=0)
+        return self.__arr[row_index]
+
+    def save(self, path):
+        np.save(path, self.__arr)
+
+    def load(self, path):
+        self.__arr = np.load(path)   
+
 
 class Digraph:
     def __init__(self):
