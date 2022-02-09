@@ -115,7 +115,7 @@ class Simulator:
             self.add_vehicle(
                 veh_dict["id"],
                 veh_dict["earliest_arrival_time"],
-                veh_dict["trajectory"],
+                tuple(veh_dict["trajectory"]),
                 veh_dict["src_lane_id"],
                 veh_dict["dst_lane_id"],
                 veh_dict["vertex_passing_time"]

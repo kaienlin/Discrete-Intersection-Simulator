@@ -1,15 +1,16 @@
-from environment import GraphBasedSimEnv
-from simulator import Simulator, Intersection
+from environment import position_based, vehicle_based
+from simulator import Simulator, Intersection, vehicle
 from utility import read_intersection_from_json
 import traffic_gen
 import policy
 
-from typing import Iterable
+from typing import Iterable, Union
 import random
 import numpy as np
 import fire
+import pickle
 
-def evaluate(policy: policy.Policy, env: GraphBasedSimEnv):
+def evaluate(policy: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_based.SimulatorEnv]):
     '''
     return the average waiting time of vehicles in seconds
     '''
@@ -31,12 +32,14 @@ def main(
     np.random.seed(seed)
     intersection: Intersection = read_intersection_from_json(intersection_file_path)
     sim_gen: Iterable[Simulator] = traffic_gen.datadir_traffic_generator(intersection, traffic_data_dir)
-    env = GraphBasedSimEnv(Simulator(intersection))
+    #env = vehicle_based.SimulatorEnv(Simulator(intersection))
+    env = pickle.load(open("env.p", "rb"))
+    env.reset(new_sim=Simulator(intersection))
 
     # Modify this list to compare different policies
     policies = [
         ("iGreedy", policy.IGreedyPolicy(env)),
-        ("DP", policy.QTablePolicy(np.load("DP.npy")))
+        ("Q", policy.QTablePolicy(np.load("Q.npy")))
     ]
 
     cost = [list() for _ in policies]

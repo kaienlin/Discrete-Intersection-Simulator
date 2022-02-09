@@ -98,10 +98,12 @@ def Q_learning(
         if (epoch + 1) % epoch_per_checkpoint == 0:
             save_Q_table(Q, Q_table_path)
             pickle.dump(seen_state, open("seen.p", "wb"))
+            pickle.dump(env, open("env.p", "wb"))
         epoch += 1
 
     save_Q_table(Q, Q_table_path)
     pickle.dump(seen_state, open("seen.p", "wb"))
+    pickle.dump(env, open("env.p", "wb"))
 
 def main(
     intersection_file_path: str,
