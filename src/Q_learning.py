@@ -66,7 +66,10 @@ def Q_learning(
 ):
     # create simulator and environment
     sim = next(simulator_generator)
-    env = environment.vehicle_based.SimulatorEnv(sim)
+    if os.path.exists("env.p"):
+        env = pickle.load(open("env.p", "rb"))
+    else:
+        env = environment.vehicle_based.SimulatorEnv(sim)
 
     num_actable_states = 0
     for s in range(env.state_space_size):
