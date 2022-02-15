@@ -18,7 +18,18 @@ def get_src_traj_dict(intersection: Intersection):
                 traj_per_src[src_lane_id][traj] = dst_lane_id
     return traj_per_src
 
-def add_random_traffic(sim: Simulator, max_time=2, max_vehicle_num=8, p=0.05):
+def add_single_batch_random_traffic(sim: Simulator, max_vehicle_num=8, p=0.05):
+    src_to_traj = get_src_traj_dict(sim.intersection)
+    veh_num = 0
+    for src_lane_id in sim.intersection.src_lanes:
+        for _ in range(max_vehicle_num):
+            if random.random() < p and veh_num < max_vehicle_num:
+                traj = random.choice(list(src_to_traj[src_lane_id].keys()))
+                dst_lane_id = src_to_traj[src_lane_id][traj]
+                sim.add_vehicle(f"vehicle-{veh_num}", 0, traj, src_lane_id, dst_lane_id)
+                veh_num += 1
+
+def add_random_traffic(sim: Simulator, max_time=300, max_vehicle_num=8, p=0.05):
     src_to_traj = get_src_traj_dict(sim.intersection)
     veh_num = 0
     for t in range(max_time):
@@ -32,8 +43,9 @@ def add_random_traffic(sim: Simulator, max_time=2, max_vehicle_num=8, p=0.05):
 def random_traffic_generator(
     intersection: Intersection,
     num_iter: int = 10000,
-    max_vehicle_num: int = 100,
-    poisson_parameter_list = [0.1, 0.3, 0.5, 0.7, 0.9]
+    max_vehicle_num: int = 4,
+    poisson_parameter_list = [0.1, 0.3, 0.5, 0.7, 0.9],
+    mode: str = "eval"
 ):
     cond = lambda _: True
     if num_iter > 0:
@@ -41,8 +53,14 @@ def random_traffic_generator(
     i = 0
     while cond(i):
         sim = Simulator(intersection)
-        add_random_traffic(sim, max_vehicle_num=max_vehicle_num,
-                           p=random.choice(poisson_parameter_list) / 10)
+        if mode == "eval":
+            add_random_traffic(sim, max_vehicle_num=max_vehicle_num, max_time=300,
+                                p=random.choice(poisson_parameter_list) / 10)
+        elif mode == "train":
+            add_single_batch_random_traffic(sim, max_vehicle_num=max_vehicle_num,
+                                p=random.choice(poisson_parameter_list) / 10)
+        else:
+            raise Exception(f"unknown random traffic generation mode: {mode}")
         i += 1
         yield sim
 
