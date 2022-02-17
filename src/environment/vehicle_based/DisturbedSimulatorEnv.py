@@ -1,5 +1,4 @@
 import random
-from collections import defaultdict
 
 from environment.vehicle_based.SimulatorEnv import SimulatorEnv
 from simulator.simulation import Simulator
@@ -16,17 +15,32 @@ class DisturbedSimulatorEnv(SimulatorEnv):
         self.disturbance_prob: float = disturbation_prob
 
     def step(self, action: int):
-        candidates = defaultdict(lambda: list())
+        assert 0 <= action <= len(self.prev_vehicles)
+
+        candidates = []
         for i, vehicle in enumerate(self.prev_vehicles):
-            if i != action - 1 and vehicle.state == VehicleState.WAITING and random.uniform(0, 1) < self.disturbance_prob:
-                next_cz = vehicle.get_next_cz()
-                if next_cz == "$":
-                    self.sim.simulation_step_act(vehicle.id)
-                else:
-                    candidates[next_cz].append(vehicle.id)
+            if i != action - 1 and vehicle.state == VehicleState.WAITING:
+                candidates.append(vehicle.id)
 
-        for next_cz, candidate_vehicles in candidates.items():
-            chosen = random.choice(candidate_vehicles)
-            self.sim.simulation_step_act(chosen)
+        chosen: str = random.choice(candidates)
+        self.sim.simulation_step_act(chosen)
 
-        return super().step(action)
+        veh_id: str = "" if action == 0 else self.prev_vehicles[action - 1].id
+        if action > 0 and self.prev_vehicles[action - 1].state == VehicleState.WAITING:
+            self.sim.simulation_step_act(veh_id)
+
+        timestamp, vehicles = self.sim.simulation_step_report()
+        num_waiting = len(self.prev_idle_veh) - (1 if veh_id in self.prev_idle_veh else 0)
+        waiting_time_sum = (timestamp - self.prev_timestamp) * num_waiting
+        self.prev_timestamp = timestamp
+
+        next_state, included_vehicles = self.__encode_state_from_vehicles(vehicles)
+        self.prev_state = next_state
+        self.prev_vehicles = included_vehicles
+        self.prev_idle_veh = set([veh.id for veh in vehicles if self.__is_idle_state(veh.state)])
+
+        terminal = self.sim.status != "RUNNING"
+        if terminal and self.sim.status == "DEADLOCK":
+            waiting_time_sum += self.DEADLOCK_COST
+
+        return next_state, waiting_time_sum, terminal, {}
