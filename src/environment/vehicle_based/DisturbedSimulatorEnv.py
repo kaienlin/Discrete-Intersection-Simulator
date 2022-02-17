@@ -34,10 +34,10 @@ class DisturbedSimulatorEnv(SimulatorEnv):
         waiting_time_sum = (timestamp - self.prev_timestamp) * num_waiting
         self.prev_timestamp = timestamp
 
-        next_state, included_vehicles = self.__encode_state_from_vehicles(vehicles)
+        next_state, included_vehicles = self._encode_state_from_vehicles(vehicles)
         self.prev_state = next_state
         self.prev_vehicles = included_vehicles
-        self.prev_idle_veh = set([veh.id for veh in vehicles if self.__is_idle_state(veh.state)])
+        self.prev_idle_veh = set([veh.id for veh in vehicles if self._is_idle_state(veh.state)])
 
         terminal = self.sim.status != "RUNNING"
         if terminal and self.sim.status == "DEADLOCK":
