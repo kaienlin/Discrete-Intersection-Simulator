@@ -19,7 +19,6 @@ class DisturbedSimulatorEnv(SimulatorEnv):
         candidates = defaultdict(lambda: list())
         for vehicle in self.prev_vehicles:
             if vehicle.state == VehicleState.WAITING and random.uniform(0, 1) < self.disturbance_prob:
-                print("meow")
                 next_cz = vehicle.get_next_cz()
                 if next_cz == "$":
                     self.sim.simulation_step_act(vehicle.id)
