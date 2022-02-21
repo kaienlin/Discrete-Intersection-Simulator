@@ -1,5 +1,6 @@
 import sys, random, os, pickle
 from typing import Iterable, Dict
+from pathlib import Path
 import numpy as np
 import fire
 
@@ -60,16 +61,21 @@ def train_Q(env: environment.vehicle_based.SimulatorEnv, Q, seen_state=None, pro
     
 def Q_learning(
     simulator_generator: Iterable[Simulator],
-    Q_table_path: str = "Q.npy",
+    checkpoint_path: Path,
     epoch_per_traffic: int = 10,
-    epoch_per_checkpoint: int = 1000
+    epoch_per_checkpoint: int = 10000
 ):
     # create simulator and environment
     sim = next(simulator_generator)
-    if os.path.exists("env.p"):
-        env = pickle.load(open("env.p", "rb"))
+
+    env_path: Path = checkpoint_path / "env.p"
+    Q_table_path: Path = checkpoint_path / "Q.npy"
+    seen_path: Path = checkpoint_path / "seen.p"
+
+    if env_path.is_file():
+        env = pickle.load(open(env_path, "rb"))
     else:
-        env = environment.vehicle_based.DisturbedSimulatorEnv(sim)
+        env = environment.vehicle_based.SimulatorEnv(sim)
 
     num_actable_states = 0
     for s in range(env.state_space_size):
@@ -78,13 +84,12 @@ def Q_learning(
     print(f"number of actable states = {num_actable_states}") 
 
     Q = load_Q_table(env, Q_table_path)
-    seen_state = pickle.load(open("seen.p", "rb")) if os.path.exists("seen.p") else set()
+    seen_state = pickle.load(open(seen_path, "rb")) if seen_path.is_file() else set()
 
     for s in range(env.state_space_size):
         for a in range(env.action_space_size):
             if not env.is_effective_action_of_state(a, s):
-                pass
-                #Q[s][a] = np.inf
+                Q[s][a] = np.inf
 
     epoch = 0
     while True:
@@ -99,29 +104,38 @@ def Q_learning(
             env.reset(sim)
 
         if (epoch + 1) % epoch_per_checkpoint == 0:
+            print("Saving...", end=" ")
             save_Q_table(Q, Q_table_path)
-            pickle.dump(seen_state, open("seen.p", "wb"))
-            pickle.dump(env, open("env.p", "wb"))
+            pickle.dump(seen_state, open(seen_path, "wb"))
+            pickle.dump(env, open(env_path, "wb"))
+            print("...done")
         epoch += 1
 
+    print("Saving...", end=" ")
     save_Q_table(Q, Q_table_path)
-    pickle.dump(seen_state, open("seen.p", "wb"))
-    pickle.dump(env, open("env.p", "wb"))
+    pickle.dump(seen_state, open(seen_path, "wb"))
+    pickle.dump(env, open(env_path, "wb"))
+    print("...done")
 
 def main(
     intersection_file_path: str,
     seed: int = 0,
     traffic_generator_name: str = "random_traffic_generator",
     traffic_generator_kwargs: Dict = {},
-    Q_table_path: str = "Q.npy",
+    checkpoint_dir: str = "./",
     epoch_per_traffic: int = 10,
-    epoch_per_checkpoint: int = 1000
+    epoch_per_checkpoint: int = 10000
 ):
     intersection: Intersection = read_intersection_from_json(intersection_file_path)
     random.seed(seed)
     np.random.seed(seed)
     sim_gen: Iterable[Simulator] = getattr(traffic_gen, traffic_generator_name)(intersection, **traffic_generator_kwargs)
-    Q_learning(sim_gen, Q_table_path, epoch_per_traffic=epoch_per_traffic, epoch_per_checkpoint=epoch_per_checkpoint)
+
+    checkpoint_dir_path: Path = Path(checkpoint_dir)
+    if not checkpoint_dir_path.is_dir():
+        checkpoint_dir_path.mkdir()
+
+    Q_learning(sim_gen, checkpoint_dir_path, epoch_per_traffic=epoch_per_traffic, epoch_per_checkpoint=epoch_per_checkpoint)
 
 
 if __name__ == "__main__":
