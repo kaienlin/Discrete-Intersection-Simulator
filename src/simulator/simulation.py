@@ -227,25 +227,13 @@ class Simulator:
     
     def reset_simulation(self) -> None:
         self.__status = "INITIALIZED"
-        self.__timestamp = 0
+        self.__timestamp = -1
         self.__event_queue.clear()
         self.__TCG.reset_vertices_state()
         for veh in self.__vehicles.values():
             veh.reset()
 
-    def simulation_step_report(self) -> Tuple[int, Iterable[Vehicle]]:
-        if any([veh.state == VehicleState.WAITING for veh in self.__vehicles.values()]):
-            if not self.__prev_moved:
-                self.__timestamp += 1
-        elif not self.__event_queue.empty():
-            self.__timestamp = min(self.__event_queue.top().time, self.__timestamp + 1)
-        else:
-            if any([veh.state != VehicleState.LEFT for veh in self.__vehicles.values()]):
-                self.__status = "DEADLOCK"
-            else:
-                self.__status = "TERMINATED"
-            return (self.__timestamp, list(self.__vehicles.values()))
-
+    def handle_event_queue(self) -> None:
         while not self.__event_queue.empty() and self.__event_queue.top().time == self.__timestamp:
             ev = self.__event_queue.top()
             self.__event_queue.pop()
@@ -266,7 +254,25 @@ class Simulator:
                     ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
             elif ev.type == EventType.START_WAITING:
                 if self.__not_blocked(ev.vertex):
-                    ev.vertex.vehicle.set_state(VehicleState.WAITING)  
+                    ev.vertex.vehicle.set_state(VehicleState.WAITING)
+
+    def simulation_step_report(self) -> Tuple[int, Iterable[Vehicle]]:
+        if any([veh.state == VehicleState.WAITING for veh in self.__vehicles.values()]):
+            if not self.__prev_moved:
+                self.__timestamp += 1
+            else:
+                self.__prev_moved = True
+        elif not self.__event_queue.empty():
+            assert self.__timestamp != self.__event_queue.top().time
+            self.__timestamp = min(self.__event_queue.top().time, self.__timestamp + 1)
+        else:
+            if any([veh.state != VehicleState.LEFT for veh in self.__vehicles.values()]):
+                self.__status = "DEADLOCK"
+            else:
+                self.__status = "TERMINATED"
+            return (self.__timestamp, list(self.__vehicles.values()))
+
+        self.handle_event_queue()
 
         return (self.__timestamp, list(self.__vehicles.values()))
 
@@ -305,6 +311,7 @@ class Simulator:
             cur_vertex = self.__TCG.get_v_by_idx(vehicle, vehicle.get_cur_cz())
             self.__TCG.finish_execute(cur_vertex)
             self.__release_cz(cur_vertex)
+            self.handle_event_queue()
 
         next_cz = vehicle.get_next_cz()
         next_vertex = None
@@ -321,4 +328,4 @@ class Simulator:
         next_vertex.entering_time = self.__timestamp
         self.__event_queue.push(next_vertex.entering_time + next_vertex.get_consumed_time(), EventType.END_MOVING, next_vertex)
         self.__TCG.start_execute(next_vertex)
-        self.__block_cz(next_vertex)      
+        self.__block_cz(next_vertex)
