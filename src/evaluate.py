@@ -10,7 +10,7 @@ import numpy as np
 import fire
 import pickle
 
-def evaluate(policy: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_based.SimulatorEnv]):
+def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_based.SimulatorEnv]):
     '''
     return the average waiting time of vehicles in seconds
     '''
@@ -18,7 +18,7 @@ def evaluate(policy: policy.Policy, env: Union[position_based.SimulatorEnv, vehi
     state = env.reset()
     waiting_time_sum = 0
     while not done:
-        action = policy.decide(state)
+        action = P.decide(state)
         state, cost, done, _ = env.step(action)
         waiting_time_sum += cost
     return waiting_time_sum / 10
@@ -33,13 +33,13 @@ def main(
     intersection: Intersection = read_intersection_from_json(intersection_file_path)
     sim_gen: Iterable[Simulator] = traffic_gen.datadir_traffic_generator(intersection, traffic_data_dir)
     #env = vehicle_based.SimulatorEnv(Simulator(intersection))
-    env = pickle.load(open("env.p", "rb"))
+    env = pickle.load(open("normal2x2/env.p", "rb"))
     env.reset(new_sim=Simulator(intersection))
 
     # Modify this list to compare different policies
     policies = [
         ("iGreedy", policy.IGreedyPolicy(env)),
-        ("Q", policy.QTablePolicy(np.load("Q.npy")))
+        ("Q-learning", policy.QTablePolicy(env, np.load("normal2x2/Q.npy")))
     ]
 
     cost = [list() for _ in policies]
@@ -49,9 +49,6 @@ def main(
         for i, (pi_name, pi) in enumerate(policies):
             c = evaluate(pi, env)
             cost[i].append(c)
-            print(f"{pi_name}: {c}")
-        
-        print("-------")
     
     print("=== Average ===")
     for i, (pi_name, _) in enumerate(policies):
