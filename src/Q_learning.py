@@ -1,6 +1,7 @@
 import sys, random, os, pickle
 from typing import Iterable, Dict
 from pathlib import Path
+from tqdm import tqdm
 import numpy as np
 import fire
 
@@ -75,7 +76,7 @@ def Q_learning(
     if env_path.is_file():
         env = pickle.load(open(env_path, "rb"))
     else:
-        env = environment.vehicle_based.SimulatorEnv(sim)
+        env = environment.vehicle_based.DisturbedSimulatorEnv(sim)
 
     num_actable_states = 0
     for s in range(env.state_space_size):
@@ -92,8 +93,9 @@ def Q_learning(
                 Q[s][a] = np.inf
 
     epoch = 0
+    pbar = tqdm()
     while True:
-        print(f"epoch = {epoch}: {len(seen_state)} / {num_actable_states} states explored")
+        pbar.set_description(f"epoch = {epoch}: {len(seen_state)}/{num_actable_states} states explored")
         train_Q(env, Q, seen_state, prob_env=None)
 
         if (epoch + 1) % epoch_per_traffic == 0:
@@ -104,11 +106,10 @@ def Q_learning(
             env.reset(sim)
 
         if (epoch + 1) % epoch_per_checkpoint == 0:
-            print("Saving...", end=" ")
+            pbar.set_description("Saving...")
             save_Q_table(Q, Q_table_path)
             pickle.dump(seen_state, open(seen_path, "wb"))
             pickle.dump(env, open(env_path, "wb"))
-            print("...done")
         epoch += 1
 
     print("Saving...", end=" ")
