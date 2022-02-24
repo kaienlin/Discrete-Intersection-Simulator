@@ -5,6 +5,7 @@ import traffic_gen
 import policy
 
 from typing import Iterable, Union
+from tqdm import tqdm
 import random
 import numpy as np
 import fire
@@ -33,26 +34,32 @@ def main(
     intersection: Intersection = read_intersection_from_json(intersection_file_path)
     sim_gen: Iterable[Simulator] = traffic_gen.datadir_traffic_generator(intersection, traffic_data_dir)
     #env = vehicle_based.SimulatorEnv(Simulator(intersection))
-    env = pickle.load(open("normal2x2/env.p", "rb"))
+    env = pickle.load(open("disturbed2x2/env.p", "rb"))
     env.reset(new_sim=Simulator(intersection))
 
     # Modify this list to compare different policies
     policies = [
         ("iGreedy", policy.IGreedyPolicy(env)),
-        ("Q-learning", policy.QTablePolicy(env, np.load("normal2x2/Q.npy")))
+        ("Q-learning", policy.QTablePolicy(env, np.load("disturbed2x2/Q.npy")))
     ]
 
     cost = [list() for _ in policies]
+    deadlock_cnt = [0 for _ in policies]
+    pbar = tqdm()
     for sim in sim_gen:
         env.reset(new_sim=sim)
 
         for i, (pi_name, pi) in enumerate(policies):
             c = evaluate(pi, env)
             cost[i].append(c)
+            if c > 1e6:
+                deadlock_cnt[i] += 1
+        
+        pbar.update(1)
     
     print("=== Average ===")
     for i, (pi_name, _) in enumerate(policies):
-        print(f"{pi_name}: {sum(cost[i]) / len(cost[i])}")
+        print(f"{pi_name}: {sum(cost[i]) / len(cost[i])}; {deadlock_cnt[i]} / {len(cost[i])}")
 
 
 if __name__ == "__main__":
