@@ -9,7 +9,7 @@ class DisturbedSimulatorEnv(SimulatorEnv):
         self,
         sim: Simulator,
         max_vehicle_num: int = 8,
-        disturbation_prob: float = 0.01
+        disturbation_prob: float = 0.05
     ):
         super().__init__(sim, max_vehicle_num)
         self.disturbance_prob: float = disturbation_prob
@@ -17,16 +17,18 @@ class DisturbedSimulatorEnv(SimulatorEnv):
     def step(self, action: int):
         assert 0 <= action <= len(self.prev_vehicles)
 
-        candidates = []
-        for i, vehicle in enumerate(self.prev_vehicles):
-            if i != action - 1 and vehicle.state == VehicleState.WAITING:
-                candidates.append(vehicle.id)
-
-        chosen: str = random.choice(candidates)
-        self.sim.simulation_step_act(chosen)
+        if random.uniform(0, 1) < self.disturbance_prob:
+            candidates = []
+            for i, vehicle in enumerate(self.prev_vehicles):
+                if i != action - 1 and vehicle.state == VehicleState.WAITING:
+                    candidates.append(vehicle.id)
+            
+            if len(candidates) > 0:
+                chosen: str = random.choice(candidates)
+                self.sim.simulation_step_act(chosen)
 
         veh_id: str = "" if action == 0 else self.prev_vehicles[action - 1].id
-        if action > 0 and self.prev_vehicles[action - 1].state == VehicleState.WAITING:
+        if veh_id == "" or self.prev_vehicles[action - 1].state == VehicleState.WAITING:
             self.sim.simulation_step_act(veh_id)
 
         timestamp, vehicles = self.sim.simulation_step_report()
