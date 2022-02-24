@@ -1,15 +1,17 @@
-from environment import GraphBasedSimEnv
-from simulator import Simulator, Intersection
+from environment import position_based, vehicle_based
+from simulator import Simulator, Intersection, vehicle
 from utility import read_intersection_from_json
 import traffic_gen
 import policy
 
-from typing import Iterable
+from typing import Iterable, Union
+from tqdm import tqdm
 import random
 import numpy as np
 import fire
+import pickle
 
-def evaluate(policy: policy.Policy, env: GraphBasedSimEnv):
+def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_based.SimulatorEnv]):
     '''
     return the average waiting time of vehicles in seconds
     '''
@@ -17,7 +19,7 @@ def evaluate(policy: policy.Policy, env: GraphBasedSimEnv):
     state = env.reset()
     waiting_time_sum = 0
     while not done:
-        action = policy.decide(state)
+        action = P.decide(state)
         state, cost, done, _ = env.step(action)
         waiting_time_sum += cost
     return waiting_time_sum / 10
@@ -31,28 +33,33 @@ def main(
     np.random.seed(seed)
     intersection: Intersection = read_intersection_from_json(intersection_file_path)
     sim_gen: Iterable[Simulator] = traffic_gen.datadir_traffic_generator(intersection, traffic_data_dir)
-    env = GraphBasedSimEnv(Simulator(intersection))
+    #env = vehicle_based.SimulatorEnv(Simulator(intersection))
+    env = pickle.load(open("disturbed2x2/env.p", "rb"))
+    env.reset(new_sim=Simulator(intersection))
 
     # Modify this list to compare different policies
     policies = [
         ("iGreedy", policy.IGreedyPolicy(env)),
-        ("DP", policy.QTablePolicy(np.load("DP.npy")))
+        ("Q-learning", policy.QTablePolicy(env, np.load("disturbed2x2/Q.npy")))
     ]
 
     cost = [list() for _ in policies]
+    deadlock_cnt = [0 for _ in policies]
+    pbar = tqdm()
     for sim in sim_gen:
         env.reset(new_sim=sim)
 
         for i, (pi_name, pi) in enumerate(policies):
             c = evaluate(pi, env)
             cost[i].append(c)
-            print(f"{pi_name}: {c}")
+            if c > 1e6:
+                deadlock_cnt[i] += 1
         
-        print("-------")
+        pbar.update(1)
     
     print("=== Average ===")
     for i, (pi_name, _) in enumerate(policies):
-        print(f"{pi_name}: {sum(cost[i]) / len(cost[i])}")
+        print(f"{pi_name}: {sum(cost[i]) / len(cost[i])}; {deadlock_cnt[i]} / {len(cost[i])}")
 
 
 if __name__ == "__main__":

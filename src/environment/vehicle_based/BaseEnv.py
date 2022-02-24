@@ -20,16 +20,20 @@ class VehicleBasedStateEnv(gym.Env):
         self.intersection: Intersection = intersection
         self.max_vehicle_num: int = max_vehicle_num
 
-        self.state_to_int: Dict[Tuple[VehicleBasedStateEnv.VehicleState], int] = {}
-        self.int_to_state: List[Tuple[VehicleBasedStateEnv.VehicleState]] = []
+        self.encoding_table: Dict[Tuple[VehicleBasedStateEnv.VehicleState], int] = {}
+        self.decoding_table: List[Tuple[VehicleBasedStateEnv.VehicleState]] = []
 
     @property
     def state_space_size(self) -> int:
-        return len(self.int_to_state)
+        return len(self.decoding_table)
 
     @property
     def action_space_size(self) -> int:
         return self.max_vehicle_num + 1
+
+    def is_actable_state(self, state: int) -> int:
+        decoded_state = self.decode_state(state)
+        return any([v.state == "waiting" for v in decoded_state])
 
     def is_effective_action_of_state(self, action: int, state: int) -> bool:
         if action == 0:
@@ -38,18 +42,18 @@ class VehicleBasedStateEnv(gym.Env):
         return not (action > len(vehicles) or vehicles[action - 1].state != "waiting")
 
     @lru_cache(maxsize=2)
-    def encode_state(self, state: Tuple[VehicleBasedStateEnv.VehicleState]) -> int:
-        state = tuple(sorted(state))
-        res = self.state_to_int.get(state, len(self.state_to_int))
-        if res < len(self.state_to_int):
+    def encode_state(self, decoded_state: Tuple[VehicleBasedStateEnv.VehicleState]) -> int:
+        decoded_state = tuple(sorted(decoded_state))
+        res = self.encoding_table.get(decoded_state, len(self.encoding_table))
+        if res < len(self.encoding_table):
             return res
-        self.state_to_int[state] = res
-        self.int_to_state.append(state)
+        self.encoding_table[decoded_state] = res
+        self.decoding_table.append(decoded_state)
         return res
 
-    def decode_state(self, s: int) -> VehicleBasedStateEnv.VehicleState:
-        if s < len(self.int_to_state):
-            return self.int_to_state[s]
+    def decode_state(self, state: int) -> Tuple[VehicleBasedStateEnv.VehicleState]:
+        if state < len(self.decoding_table):
+            return self.decoding_table[state]
         raise Exception("VehicleBasedStateEnv: trying to decode unseen state")
     
     @dataclass(order=True, unsafe_hash=True)
