@@ -5,7 +5,6 @@ from .vehicle import Vehicle, VehicleState
 from typing import Iterable, Tuple, List, Dict
 import heapq
 import enum
-import logging
 import json
 
 class EventType(enum.Enum):
@@ -53,8 +52,6 @@ class Simulator:
         intersection: Intersection,
     ):
         self.__intersection: Intersection = intersection
-        self.__mode: str = "MANAGED"
-        self.__logger = logging.getLogger("Simulator")
         
         self.__vehicles: Dict[str, Vehicle] = dict()
         self.__status: str = "INITIALIZED"
