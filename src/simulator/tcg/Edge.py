@@ -8,7 +8,7 @@ class EdgeType(enum.Enum):
 
 class Edge:
     default_waiting_time = {
-        EdgeType.TYPE_1: 1,
+        EdgeType.TYPE_1: 0,
         EdgeType.TYPE_2: 2,
         EdgeType.TYPE_3: 3
     }
