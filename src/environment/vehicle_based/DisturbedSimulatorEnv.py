@@ -9,10 +9,10 @@ class DisturbedSimulatorEnv(SimulatorEnv):
         self,
         sim: Simulator,
         max_vehicle_num: int = 8,
-        disturbation_prob: float = 0.05
+        disturbance_prob: float = 0.05
     ):
         super().__init__(sim, max_vehicle_num)
-        self.disturbance_prob: float = disturbation_prob
+        self.disturbance_prob: float = disturbance_prob
 
     def step(self, action: int):
         assert 0 <= action <= len(self.prev_vehicles)
