@@ -194,6 +194,10 @@ class Simulator:
     def timestamp(self) -> int:
         return self.__timestamp
 
+    @property
+    def TCG(self) -> TimingConflictGraph:
+        return self.__TCG
+
     def print_TCG(self) -> None:
         self.__TCG.print()
 
@@ -307,16 +311,17 @@ class Simulator:
         self.__prev_moved = True
         vehicle = self.__vehicles[allowed_veh_id]
 
+        next_cz = vehicle.get_next_cz()
+        next_vertex = None
+        if next_cz != "$":
+            next_vertex = self.__TCG.get_v_by_idx(vehicle, next_cz)
+            next_vertex.entering_time = self.__timestamp
+
         if vehicle.idx_on_traj != -1:
             cur_vertex = self.__TCG.get_v_by_idx(vehicle, vehicle.get_cur_cz())
             self.__TCG.finish_execute(cur_vertex)
             self.__release_cz(cur_vertex)
             self.handle_event_queue()
-
-        next_cz = vehicle.get_next_cz()
-        next_vertex = None
-        if next_cz != "$":
-            next_vertex = self.__TCG.get_v_by_idx(vehicle, next_cz)
 
         vehicle.move_to_next_cz()
 
@@ -325,7 +330,7 @@ class Simulator:
             return
 
         vehicle.set_state(VehicleState.MOVING)
-        next_vertex.entering_time = self.__timestamp
+        
         self.__event_queue.push(next_vertex.entering_time + next_vertex.get_consumed_time(), EventType.END_MOVING, next_vertex)
         self.__TCG.start_execute(next_vertex)
         self.__block_cz(next_vertex)
