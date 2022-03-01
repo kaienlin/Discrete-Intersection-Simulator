@@ -111,6 +111,13 @@ class TimingConflictGraph:
                 e.v_to.in_edges.remove(e)
                 del self.__E[key]
 
+    def add_unsure_type3_edges(self) -> None:
+        for v1 in self.__V.values():
+            for v2 in self.__V.values():
+                if v1.id != v2.id and v1.cz_id == v2.cz_id and (v1.id, v2.id) not in self.__E and (v2.id, v1.id) not in self.__E:
+                    self.__add_edge_by_vtx(v1, v2, EdgeType.TYPE_3)
+                    self.__add_edge_by_vtx(v2, v1, EdgeType.TYPE_3)
+
     @property
     def V(self) -> Iterable[Vertex]:
         return self.__V.values()
