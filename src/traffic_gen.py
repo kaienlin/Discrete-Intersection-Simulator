@@ -79,7 +79,9 @@ def main(
     output_dir: str = "./",
     seed: int = 0,
     num: int = 10,
-    poisson_parameter_list: List = [0.1, 0.3, 0.5]
+    max_vehicle_num: int = 4,
+    poisson_parameter_list: List = [0.1, 0.3, 0.5],
+    mode: str = "eval"
 ):
     random.seed(seed)
     intersection: Intersection = read_intersection_from_json(intersection_file_path)
@@ -87,7 +89,7 @@ def main(
     if not data_dir.exists():
         data_dir.mkdir(parents=True)
 
-    gen = random_traffic_generator(intersection, num_iter=num, poisson_parameter_list=poisson_parameter_list)
+    gen = random_traffic_generator(intersection, num_iter=num, max_vehicle_num=max_vehicle_num, poisson_parameter_list=poisson_parameter_list, mode=mode)
     for i, sim in enumerate(gen):
         sim.dump_traffic(data_dir / f"{i}.json")
 
