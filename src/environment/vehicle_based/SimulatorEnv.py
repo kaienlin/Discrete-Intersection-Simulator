@@ -63,7 +63,7 @@ class SimulatorEnv(VehicleBasedStateEnv):
     def _is_idle_state(self, state: VehicleState) -> bool:
         return state == VehicleState.WAITING or state == VehicleState.BLOCKED
 
-    def _encode_state_from_vehicles(self, vehicles: Iterable[Vehicle]) -> Tuple[VehicleBasedStateEnv.VehicleState]:
+    def _encode_state_from_vehicles(self, vehicles: Iterable[Vehicle]) -> Tuple:
         included_vehicles = []
         for vehicle in vehicles:
             if vehicle.state != VehicleState.LEFT and \
