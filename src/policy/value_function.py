@@ -50,10 +50,6 @@ class QTablePolicy(Policy):
             if cyclic:
                 effective_actions.remove(action)
 
-        # block NO-OP action
-        if 0 in effective_actions and len(effective_actions) > 1 and self.igreedy.decide(state) != 0:
-            effective_actions.remove(0)
-
         action = effective_actions[Q_state[effective_actions].argmin()]
 
         if action == 0:
