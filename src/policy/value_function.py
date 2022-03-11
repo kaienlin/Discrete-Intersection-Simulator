@@ -1,15 +1,17 @@
 import numpy as np
 
+from utility import Digraph
+
 from .base import Policy
 from .greedy import IGreedyPolicy
-from utility import Digraph
+
 
 class QTablePolicy(Policy):
     def __init__(self, env, Q):
         self.env = env
         self.Q = Q
         self.original_state_space_size = self.env.state_space_size
-        
+
         self.prev_state: int = -1
         self.prev_action: int = -1
         self.waiting_counter: int = 0
@@ -22,7 +24,8 @@ class QTablePolicy(Policy):
             return self.igreedy.decide(state)
 
         Q_state = self.Q[state]
-        effective_actions = [a for a in range(self.env.action_space_size) if self.env.is_effective_action_of_state(a, state)]
+        effective_actions = [a for a in range(self.env.action_space_size)
+            if self.env.is_effective_action_of_state(a, state)]
 
         G = Digraph()
         decoded_state = self.env.decode_state(state)
@@ -60,7 +63,7 @@ class QTablePolicy(Policy):
         else:
             self.waiting_counter = 0
 
-        if not all([np.isinf(v) for v in Q_state[1:]]) and self.waiting_counter > self.max_waiting:
+        if not all(np.isinf(v) for v in Q_state[1:]) and self.waiting_counter > self.max_waiting:
             print(f"[QTablePolicy] on state {state} max waiting time exceeded")
             Q_state[action] = np.inf
             action = np.argmin(Q_state)

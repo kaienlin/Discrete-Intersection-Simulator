@@ -1,3 +1,3 @@
-from .BaseEnv import PositionBasedStateEnv
-from .SimulatorEnv import SimulatorEnv
-from .ProbabilisticEnv import ProbabilisticEnv
+from .base import PositionBasedStateEnv
+from .simulator_env import SimulatorEnv
+from .probabilistic_env import ProbabilisticEnv

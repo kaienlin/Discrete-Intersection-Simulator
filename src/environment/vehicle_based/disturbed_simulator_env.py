@@ -1,8 +1,9 @@
 import random
 
-from environment.vehicle_based.SimulatorEnv import SimulatorEnv
+from environment.vehicle_based.simulator_env import SimulatorEnv
 from simulation.simulator import Simulator
 from simulation.vehicle import VehicleState
+
 
 class DisturbedSimulatorEnv(SimulatorEnv):
     def __init__(
@@ -22,7 +23,7 @@ class DisturbedSimulatorEnv(SimulatorEnv):
             for i, vehicle in enumerate(self.prev_vehicles):
                 if i != action - 1 and vehicle.state == VehicleState.WAITING:
                     candidates.append(vehicle.id)
-            
+
             if len(candidates) > 0:
                 chosen: str = random.choice(candidates)
                 self.sim.simulation_step_act(chosen)
@@ -39,7 +40,7 @@ class DisturbedSimulatorEnv(SimulatorEnv):
         next_state, included_vehicles = self._encode_state_from_vehicles(vehicles)
         self.prev_state = next_state
         self.prev_vehicles = included_vehicles
-        self.prev_idle_veh = set([veh.id for veh in vehicles if self._is_idle_state(veh.state)])
+        self.prev_idle_veh = {veh.id for veh in vehicles if self._is_idle_state(veh.state)}
 
         terminal = self.sim.status != "RUNNING"
         if terminal and self.sim.status == "DEADLOCK":

@@ -1,11 +1,14 @@
 from collections import namedtuple
 from typing import Tuple, List, Set
+import copy
+import math
+
 from tqdm import tqdm
-import copy, math
 
 from simulation.intersection import Intersection
-from environment.position_based.BaseEnv import PositionBasedStateEnv
+from environment.position_based.base import PositionBasedStateEnv
 from utility import Digraph
+
 
 class ProbabilisticEnv(PositionBasedStateEnv):
     def __init__(

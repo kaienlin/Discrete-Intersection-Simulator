@@ -1,9 +1,9 @@
-import copy, sys
 from typing import Tuple, Iterable, Set
 
-from environment.vehicle_based.BaseEnv import VehicleBasedStateEnv
+from environment.vehicle_based.base import VehicleBasedStateEnv
 from simulation.simulator import Simulator
 from simulation.vehicle import Vehicle, VehicleState
+
 
 class SimulatorEnv(VehicleBasedStateEnv):
     def __init__(
@@ -16,9 +16,10 @@ class SimulatorEnv(VehicleBasedStateEnv):
         self.sim: Simulator = sim
         self.max_vehicle_num_per_src_lane: int = max_vehicle_num_per_src_lane
 
+        self.prev_state: int = 0
         self.prev_vehicles: Tuple[Vehicle] = tuple()
         self.prev_timestamp: int = 0
-        self.prev_idle_vehicles: Set[str] = set()
+        self.prev_idle_veh: Set[str] = set()
 
     def reset(self, new_sim=None):
         if new_sim is not None:
@@ -30,7 +31,7 @@ class SimulatorEnv(VehicleBasedStateEnv):
         timestamp, vehicles = self.sim.simulation_step_report()
         self.prev_timestamp = timestamp
         self.prev_state, self.prev_vehicles = self._encode_state_from_vehicles(vehicles)
-        self.prev_idle_veh = set([veh.id for veh in vehicles if self._is_idle_state(veh.state)])
+        self.prev_idle_veh = {veh.id for veh in vehicles if self._is_idle_state(veh.state)}
 
         return self.prev_state
 
@@ -44,17 +45,15 @@ class SimulatorEnv(VehicleBasedStateEnv):
         veh_id: str = "" if action == 0 else self.prev_vehicles[action - 1].id
         self.sim.simulation_step_act(veh_id)
 
-        waiting_time_sum = 0
-
         timestamp, vehicles = self.sim.simulation_step_report()
         num_waiting = len(self.prev_idle_veh) - (1 if veh_id in self.prev_idle_veh else 0)
-        waiting_time_sum += (timestamp - self.prev_timestamp) * num_waiting
+        waiting_time_sum = (timestamp - self.prev_timestamp) * num_waiting
         self.prev_timestamp = timestamp
 
         next_state, included_vehicles = self._encode_state_from_vehicles(vehicles)
         self.prev_state = next_state
         self.prev_vehicles = included_vehicles
-        self.prev_idle_veh = set([veh.id for veh in vehicles if self._is_idle_state(veh.state)])
+        self.prev_idle_veh = {veh.id for veh in vehicles if self._is_idle_state(veh.state)}
 
         terminal = self.sim.status != "RUNNING"
         if terminal and self.sim.status == "DEADLOCK":
@@ -62,14 +61,16 @@ class SimulatorEnv(VehicleBasedStateEnv):
 
         return next_state, waiting_time_sum, terminal, {}
 
-    def _is_idle_state(self, state: VehicleState) -> bool:
-        return state == VehicleState.WAITING or state == VehicleState.BLOCKED
+    @staticmethod
+    def _is_idle_state(state: VehicleState) -> bool:
+        return state in (VehicleState.WAITING, VehicleState.BLOCKED)
 
     def _encode_state_from_vehicles(self, vehicles: Iterable[Vehicle]) -> Tuple:
         vehicles_near_intersection = []
         for vehicle in vehicles:
-            if vehicle.state != VehicleState.LEFT and \
-                not (vehicle.idx_on_traj == -1 and vehicle.state not in [VehicleState.WAITING, VehicleState.BLOCKED]):
+            if vehicle.state != VehicleState.LEFT \
+                and not (vehicle.idx_on_traj == -1 \
+                and vehicle.state not in [VehicleState.WAITING, VehicleState.BLOCKED]):
                 vehicles_near_intersection.append(vehicle)
 
         def vehicle_priority_func(vehicle: Vehicle) -> int:
@@ -77,18 +78,22 @@ class SimulatorEnv(VehicleBasedStateEnv):
                 return -1
             if vehicle.state == VehicleState.WAITING:
                 return -1
-            if vehicle.idx_on_traj == -1 and vehicle.state in [VehicleState.WAITING, VehicleState.BLOCKED]:
+            if vehicle.idx_on_traj == -1 \
+                and vehicle.state in [VehicleState.WAITING, VehicleState.BLOCKED]:
                 num_pred_vehicles = 0
                 for other in vehicles:
                     if other.src_lane_id == vehicle.src_lane_id \
-                        and other.idx_on_traj == -1 and other.state in [VehicleState.WAITING, VehicleState.BLOCKED] \
+                        and other.idx_on_traj == -1 \
+                        and other.state in [VehicleState.WAITING, VehicleState.BLOCKED] \
                         and other.earliest_arrival_time < vehicle.earliest_arrival_time:
                         num_pred_vehicles += 1
                 return num_pred_vehicles
+            return 1000
 
         vehicles_near_intersection.sort(key=vehicle_priority_func)
-        lane_quota = {src_lane_id: self.max_vehicle_num_per_src_lane for src_lane_id in self.sim.intersection.src_lanes}
-        
+        lane_quota = {src_lane_id: self.max_vehicle_num_per_src_lane
+                      for src_lane_id in self.sim.intersection.src_lanes}
+
         included_vehicles = []
         for vehicle in vehicles_near_intersection:
             if vehicle.get_cur_cz() == "^":

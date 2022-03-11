@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import gym
-from gym import spaces
 from typing import Tuple, Dict, Set, List
 from functools import lru_cache
 from dataclasses import dataclass, field
+
 from tqdm import tqdm
+from gym import spaces
+import gym
 
 from simulation.intersection import Intersection
+
 
 class PositionBasedStateEnv(gym.Env):
     TERMINAL_STATE = 0

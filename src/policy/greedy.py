@@ -1,15 +1,18 @@
 from typing import Dict, Set, Union, Tuple
 import itertools
 
-from .base import Policy
+from utility import Digraph
 from environment.position_based import PositionBasedStateEnv
 from environment.vehicle_based import VehicleBasedStateEnv
-from utility import Digraph
+
+from .base import Policy
+
 
 class IGreedyPolicy(Policy):
     def __init__(self, env: Union[PositionBasedStateEnv, VehicleBasedStateEnv]):
         self.env: Union[PositionBasedStateEnv, VehicleBasedStateEnv] = env
-        self.transitions_of_cz: Dict[str, Set[str]] = {cz_id: set() for cz_id in env.intersection.conflict_zones}
+        self.transitions_of_cz: Dict[str, Set[str]] = {
+            cz_id: set() for cz_id in env.intersection.conflict_zones}
 
         for src, dst in env.intersection.transitions:
             self.transitions_of_cz[src].add(dst)
@@ -17,10 +20,9 @@ class IGreedyPolicy(Policy):
     def decide(self, state: int) -> int:
         if isinstance(self.env, PositionBasedStateEnv):
             return self.__decide_position_based(state)
-        elif isinstance(self.env, VehicleBasedStateEnv):
+        if isinstance(self.env, VehicleBasedStateEnv):
             return self.__decide_vehicle_based(state)
-        else:
-            assert False
+        assert False
 
     def __decide_position_based(self, state: int) -> int:
         decoded_state = self.env.decode_state(state)
@@ -30,7 +32,8 @@ class IGreedyPolicy(Policy):
             if cz_state.next_position not in ["", "$"]:
                 G.add_edge(cz_id, cz_state.next_position)
 
-        positions = itertools.chain(decoded_state.cz_state.items(), decoded_state.src_lane_state.items())
+        positions = itertools.chain(
+            decoded_state.cz_state.items(), decoded_state.src_lane_state.items())
         for pos, pos_state in positions:
             if pos_state.vehicle_state == "waiting":
                 safe = True
@@ -47,7 +50,9 @@ class IGreedyPolicy(Policy):
                             safe = False
                             break
                 if safe:
-                    t: str = "src" if isinstance(pos_state, PositionBasedStateEnv.SrcLaneState) else "cz"
+                    t: str = "src" \
+                        if isinstance(pos_state, PositionBasedStateEnv.SrcLaneState) \
+                        else "cz"
                     action = PositionBasedStateEnv.DecodedAction(type=t, id=pos)
                     return self.env.encode_action(action)
 
@@ -61,7 +66,7 @@ class IGreedyPolicy(Policy):
                 cur_cz = vehicle_state.trajectory[vehicle_state.position]
                 next_cz = vehicle_state.trajectory[vehicle_state.position + 1]
                 G.add_edge(cur_cz, next_cz)
-            
+
         for i, vehicle_state in enumerate(decoded_state):
             if vehicle_state.state == "waiting":
                 if vehicle_state.position >= len(vehicle_state.trajectory) - 2:
@@ -77,5 +82,5 @@ class IGreedyPolicy(Policy):
                     G.add_edge(vehicle_state.trajectory[vehicle_state.position], cz1)
                 if not cyclic:
                     return i + 1
-        
+
         return 0

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import gym
 from typing import Literal, Tuple, Dict, List
 from functools import lru_cache
 from dataclasses import dataclass, field
 
 from simulation.intersection import Intersection
 
-class VehicleBasedStateEnv(gym.Env):
+
+class VehicleBasedStateEnv:
     DEADLOCK_COST = 1e9
     vehicle_state_values: Tuple[str] = ("waiting", "non-waiting")
 
@@ -33,14 +33,15 @@ class VehicleBasedStateEnv(gym.Env):
 
     def is_actable_state(self, state: int) -> int:
         decoded_state = self.decode_state(state)
-        return any([v.state == "waiting" for v in decoded_state])
+        return any(v.state == "waiting" for v in decoded_state)
 
     def is_effective_action_of_state(self, action: int, state: int) -> bool:
         vehicles = self.decode_state(state)
 
         # If there exists a vehicle is waiting on the last conflict zone of its trajectory, then
         # the make out all the other actions to enforce the action that let that vehicle leave.
-        waiting_on_last_cz = [v.position == len(v.trajectory) - 1 and v.state == "waiting" for v in vehicles]
+        waiting_on_last_cz = [v.position == len(v.trajectory) - 1 and v.state == "waiting"
+                              for v in vehicles]
         if any(waiting_on_last_cz):
             return action - 1 == waiting_on_last_cz.index(True)
 
@@ -60,7 +61,7 @@ class VehicleBasedStateEnv(gym.Env):
         if state < len(self.decoding_table):
             return self.decoding_table[state]
         raise Exception("VehicleBasedStateEnv: trying to decode unseen state")
-    
+
     @dataclass(order=True, unsafe_hash=True)
     class VehicleState:
         src_lane: str = ""
