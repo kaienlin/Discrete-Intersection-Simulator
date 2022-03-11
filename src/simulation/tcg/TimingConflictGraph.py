@@ -1,7 +1,7 @@
 from typing import Iterable, Set, Dict, Tuple
 
-from simulator.intersection import Intersection
-from simulator.vehicle import Vehicle
+from simulation.intersection import Intersection
+from simulation.vehicle import Vehicle
 
 from .Vertex import Vertex, VertexState
 from .Edge import Edge, EdgeType

@@ -4,7 +4,7 @@ import json
 from typing import Dict, Any, Set, List, Tuple
 import numpy as np
 
-from simulator import Intersection
+from simulation import Intersection
 
 class DynamicQtable:
     def __init__(self, action_num: int, init_state_num: int = 1<<16):

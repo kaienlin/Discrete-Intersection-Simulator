@@ -8,7 +8,7 @@ import numpy as np
 import fire
 
 from environment import position_based, vehicle_based
-from simulator import Simulator, Intersection
+from simulation import Simulator, Intersection
 from utility import read_intersection_from_json
 from CP import solve_by_CP
 import traffic_gen

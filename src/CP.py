@@ -2,8 +2,8 @@ from ortools.sat.python import cp_model
 from collections import defaultdict
 import copy
 
-from simulator import Simulator
-from simulator.tcg import TimingConflictGraph, EdgeType
+from simulation import Simulator
+from simulation.tcg import TimingConflictGraph, EdgeType
 from utility import read_intersection_from_json
 
 def calculate_passing_time_sum_upper_bound(sim: Simulator) -> int:

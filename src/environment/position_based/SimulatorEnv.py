@@ -1,8 +1,8 @@
 import copy
 from typing import Iterable, Set, Tuple
 
-from simulator.simulation import Simulator
-from simulator.vehicle import Vehicle, VehicleState
+from simulation.simulator import Simulator
+from simulation.vehicle import Vehicle, VehicleState
 from environment.position_based.BaseEnv import PositionBasedStateEnv
  
 class SimulatorEnv(PositionBasedStateEnv):

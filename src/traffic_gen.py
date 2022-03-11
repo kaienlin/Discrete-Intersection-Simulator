@@ -3,7 +3,7 @@ from typing import Dict, List, Set
 from pathlib import Path
 import fire
 
-from simulator import Intersection, Simulator
+from simulation import Intersection, Simulator
 from utility import read_intersection_from_json
 
 def get_src_traj_dict(intersection: Intersection):

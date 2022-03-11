@@ -7,7 +7,7 @@ from functools import lru_cache
 from dataclasses import dataclass, field
 from tqdm import tqdm
 
-from simulator.intersection import Intersection
+from simulation.intersection import Intersection
 
 class PositionBasedStateEnv(gym.Env):
     TERMINAL_STATE = 0

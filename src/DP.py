@@ -4,7 +4,7 @@ from tqdm import tqdm
 import fire
 
 import environment
-from simulator import Intersection
+from simulation import Intersection
 from utility import read_intersection_from_json
 
 def value_iteration(env: environment.position_based.ProbabilisticEnv, theta=1e-3, discount_factor=0.95):

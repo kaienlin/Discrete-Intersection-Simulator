@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import copy
 
 from utility import read_intersection_from_json
-from simulator import Intersection
+from simulation import Intersection
 from traffic_gen import get_src_traj_dict
 
 @dataclass(order=True, unsafe_hash=True)

@@ -2,8 +2,8 @@ import copy, sys
 from typing import Tuple, Iterable, Set
 
 from environment.vehicle_based.BaseEnv import VehicleBasedStateEnv
-from simulator.simulation import Simulator
-from simulator.vehicle import Vehicle, VehicleState
+from simulation.simulator import Simulator
+from simulation.vehicle import Vehicle, VehicleState
 
 class SimulatorEnv(VehicleBasedStateEnv):
     def __init__(

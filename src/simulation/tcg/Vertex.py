@@ -1,8 +1,8 @@
 import enum
 from typing import Set
 
-from simulator.tcg.Edge import Edge, EdgeType
-from simulator.vehicle import Vehicle
+from simulation.tcg.Edge import Edge, EdgeType
+from simulation.vehicle import Vehicle
 
 class VertexState(enum.Enum):
     NON_EXECUTED = enum.auto()

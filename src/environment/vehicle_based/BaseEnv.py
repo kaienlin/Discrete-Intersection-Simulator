@@ -5,7 +5,7 @@ from typing import Literal, Tuple, Dict, List
 from functools import lru_cache
 from dataclasses import dataclass, field
 
-from simulator.intersection import Intersection
+from simulation.intersection import Intersection
 
 class VehicleBasedStateEnv(gym.Env):
     DEADLOCK_COST = 1e9

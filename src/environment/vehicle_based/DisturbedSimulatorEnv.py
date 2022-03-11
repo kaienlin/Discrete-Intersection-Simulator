@@ -1,8 +1,8 @@
 import random
 
 from environment.vehicle_based.SimulatorEnv import SimulatorEnv
-from simulator.simulation import Simulator
-from simulator.vehicle import VehicleState
+from simulation.simulator import Simulator
+from simulation.vehicle import VehicleState
 
 class DisturbedSimulatorEnv(SimulatorEnv):
     def __init__(

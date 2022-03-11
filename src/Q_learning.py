@@ -1,4 +1,4 @@
-from typing import Iterable, Dict, Optional
+from typing import Any, Iterable, Dict, Optional
 from pathlib import Path
 from collections import defaultdict
 import os
@@ -10,7 +10,7 @@ from tqdm import tqdm
 import numpy as np
 import fire
 
-from simulator import Simulator, Intersection
+from simulation import Simulator, Intersection
 from utility import read_intersection_from_json, DynamicQtable
 from evaluate import batch_evaluate
 from policy import QTablePolicy
@@ -32,7 +32,7 @@ def train_Q(
         env: environment.vehicle_based.SimulatorEnv,
         Q: DynamicQtable,
         seen_state: Optional[Dict] = None,
-        prob_env: Optional = None,
+        prob_env: Optional[Any] = None,
         alpha: float = 0.1,
         gamma: float = 0.9,
         epsilon: float = 0.2,
