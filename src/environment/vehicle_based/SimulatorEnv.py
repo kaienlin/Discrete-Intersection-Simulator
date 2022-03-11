@@ -9,10 +9,12 @@ class SimulatorEnv(VehicleBasedStateEnv):
     def __init__(
         self,
         sim: Simulator,
-        max_vehicle_num: int = 8
+        max_vehicle_num: int = 8,
+        max_vehicle_num_per_src_lane: int = 1
     ):
         super().__init__(sim.intersection, max_vehicle_num)
         self.sim: Simulator = sim
+        self.max_vehicle_num_per_src_lane: int = max_vehicle_num_per_src_lane
 
         self.prev_vehicles: Tuple[Vehicle] = tuple()
         self.prev_timestamp: int = 0
@@ -63,15 +65,17 @@ class SimulatorEnv(VehicleBasedStateEnv):
     def _is_idle_state(self, state: VehicleState) -> bool:
         return state == VehicleState.WAITING or state == VehicleState.BLOCKED
 
-    def _encode_state_from_vehicles(self, vehicles: Iterable[Vehicle]) -> Tuple[VehicleBasedStateEnv.VehicleState]:
-        included_vehicles = []
+    def _encode_state_from_vehicles(self, vehicles: Iterable[Vehicle]) -> Tuple:
+        vehicles_near_intersection = []
         for vehicle in vehicles:
             if vehicle.state != VehicleState.LEFT and \
                 not (vehicle.idx_on_traj == -1 and vehicle.state not in [VehicleState.WAITING, VehicleState.BLOCKED]):
-                included_vehicles.append(vehicle)
+                vehicles_near_intersection.append(vehicle)
 
         def vehicle_priority_func(vehicle: Vehicle) -> int:
             if 0 <= vehicle.idx_on_traj <= len(vehicle.trajectory) - 1:
+                return -1
+            if vehicle.state == VehicleState.WAITING:
                 return -1
             if vehicle.idx_on_traj == -1 and vehicle.state in [VehicleState.WAITING, VehicleState.BLOCKED]:
                 num_pred_vehicles = 0
@@ -82,16 +86,27 @@ class SimulatorEnv(VehicleBasedStateEnv):
                         num_pred_vehicles += 1
                 return num_pred_vehicles
 
-        included_vehicles.sort(key=vehicle_priority_func)
-        included_vehicles = included_vehicles[:min(len(included_vehicles), self.max_vehicle_num)]
+        vehicles_near_intersection.sort(key=vehicle_priority_func)
+        lane_quota = {src_lane_id: self.max_vehicle_num_per_src_lane for src_lane_id in self.sim.intersection.src_lanes}
+        
+        included_vehicles = []
+        for vehicle in vehicles_near_intersection:
+            if vehicle.get_cur_cz() == "^":
+                if lane_quota[vehicle.src_lane_id] > 0:
+                    lane_quota[vehicle.src_lane_id] -= 1
+                    included_vehicles.append(vehicle)
+            else:
+                included_vehicles.append(vehicle)
+            if len(included_vehicles) == self.max_vehicle_num:
+                break
 
         res = []
         for vehicle in included_vehicles:
             res.append(self.VehicleState(
-                src_lane=vehicle.src_lane_id,
-                trajectory=vehicle.trajectory,
-                position=vehicle.idx_on_traj,
-                state=vehicle.state.name.lower()
+                src_lane="",
+                trajectory=vehicle.trajectory[max(0, vehicle.idx_on_traj):],
+                position=min(0, vehicle.idx_on_traj),
+                state="waiting" if vehicle.state == VehicleState.WAITING else "non-waiting"
             ))
         res = tuple(res)
         indices = sorted(list(range(len(res))), key=lambda i: res[i])

@@ -18,15 +18,20 @@ def get_src_traj_dict(intersection: Intersection):
                 traj_per_src[src_lane_id][traj] = dst_lane_id
     return traj_per_src
 
-def add_single_batch_random_traffic(sim: Simulator, max_vehicle_num=8, p=0.05):
+def add_single_batch_random_traffic(
+    sim: Simulator,
+    max_vehicle_num: int = 8,
+    max_vehicle_num_per_src_lane: int = 1,
+    p: float = 0.05
+):
     src_to_traj = get_src_traj_dict(sim.intersection)
     veh_num = 0
     for src_lane_id in sim.intersection.src_lanes:
-        for _ in range(max_vehicle_num):
+        for _ in range(max_vehicle_num_per_src_lane):
             if random.random() < p and veh_num < max_vehicle_num:
                 traj = random.choice(list(src_to_traj[src_lane_id].keys()))
                 dst_lane_id = src_to_traj[src_lane_id][traj]
-                sim.add_vehicle(f"vehicle-{veh_num}", 0, traj, src_lane_id, dst_lane_id)
+                sim.add_vehicle(f"vehicle-{veh_num}", 0, traj, src_lane_id, dst_lane_id, vertex_passing_time=random.randint(7, 13))
                 veh_num += 1
 
 def add_random_traffic(sim: Simulator, max_time=300, max_vehicle_num=8, p=0.05):
@@ -37,7 +42,7 @@ def add_random_traffic(sim: Simulator, max_time=300, max_vehicle_num=8, p=0.05):
             if random.random() < p and veh_num < max_vehicle_num:
                 traj = random.choice(list(src_to_traj[src_lane_id].keys()))
                 dst_lane_id = src_to_traj[src_lane_id][traj]
-                sim.add_vehicle(f"vehicle-{veh_num}", t, traj, src_lane_id, dst_lane_id)
+                sim.add_vehicle(f"vehicle-{veh_num}", t, traj, src_lane_id, dst_lane_id, vertex_passing_time=random.randint(7, 13))
                 veh_num += 1
 
 def random_traffic_generator(
