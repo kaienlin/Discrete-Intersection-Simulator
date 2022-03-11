@@ -33,7 +33,7 @@ for n in range(4, 15):
         avg_opt += solve_by_CP(sim)
 
         env.reset(new_sim=sim)
-        avg_greedy += evaluate(igreedy, env)
+        avg_greedy += evaluate(igreedy, env)[0]
     
     print(f"----- {n} vehicles -----")
     opt_rec.append(avg_opt / num_iter)
