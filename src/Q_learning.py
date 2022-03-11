@@ -81,6 +81,8 @@ def train_Q(
 def Q_learning(
     simulator_generator: Iterable[Simulator],
     checkpoint_path: Path,
+    max_vehicle_num: int = 8,
+    max_vehicle_num_per_src_lane: int = 1,
     epoch_per_traffic: int = 10,
     epoch_per_checkpoint: int = 10000,
     eval_data_dir: Optional[str] = None
@@ -97,7 +99,8 @@ def Q_learning(
     if env_path.is_file():
         env = pickle.load(open(env_path, "rb"))
     else:
-        env = environment.vehicle_based.SimulatorEnv(sim)
+        env = environment.vehicle_based.SimulatorEnv(sim, 
+            max_vehicle_num=max_vehicle_num, max_vehicle_num_per_src_lane=max_vehicle_num_per_src_lane)
 
     num_actable_states = 0
     for s in range(env.state_space_size):
@@ -155,6 +158,8 @@ def Q_learning(
 def main(
     intersection_file_path: str,
     seed: int = 0,
+    max_vehicle_num: int = 8,
+    max_vehicle_num_per_src_lane: int = 1,
     traffic_generator_name: str = "random_traffic_generator",
     traffic_generator_kwargs: Dict = {},
     checkpoint_dir: str = "./",
@@ -172,6 +177,7 @@ def main(
         checkpoint_dir_path.mkdir()
 
     Q_learning(sim_gen, checkpoint_dir_path,
+               max_vehicle_num=max_vehicle_num, max_vehicle_num_per_src_lane=max_vehicle_num_per_src_lane,
                epoch_per_traffic=epoch_per_traffic, epoch_per_checkpoint=epoch_per_checkpoint, eval_data_dir=eval_data_dir)
 
 
