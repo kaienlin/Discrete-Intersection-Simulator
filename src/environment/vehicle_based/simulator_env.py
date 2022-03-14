@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Tuple, Iterable, Set
 
 from environment.vehicle_based.base import VehicleBasedStateEnv
@@ -60,56 +61,34 @@ class SimulatorEnv(VehicleBasedStateEnv):
 
         return next_state, delayed_time, terminal, {}
 
-    def get_trajectories(self) -> Iterable[Iterable[Tuple[int, int, int]]]:
-        '''
-        return trajectories in the format of [[s0, a0, r0], [s1, a1, r1], ...]
-        '''
-        def id_to_action(acted_vehicle_id, vehicles) -> int:
-            if acted_vehicle_id == "":
-                return 0
-            for i, vehicle in enumerate(vehicles):
-                if vehicle.id == acted_vehicle_id:
-                    return i + 1
-            return 0
-
-        def calc_num_idle_vehicles(acted_vehicle_id, vehicles) -> int:
-            res = 0
-            for vehicle in vehicles:
-                if vehicle.id != acted_vehicle_id and self.raw_state_env.is_idle_state(vehicle.state):
-                    res += 1
-            return res
-
-        trajectories = []
+    def get_snapshots(self):
+        res = []
         vehicle_ids_prev = set()
-        for i, (t_0, raw_vehicles_0, acted_vehicle_id_0) in enumerate(self.raw_state_env.history[:-1]):
+        for i, (t_0, raw_vehicles_0, _) in enumerate(self.raw_state_env.history[:-1]):
             S_0, vehicles_0 = self._encode_state_from_vehicles(raw_vehicles_0)
+            sim = self.raw_state_env.sim_snapshots[i]
+
             vehicle_ids_0 = {vehicle.id for vehicle in vehicles_0}
-            if vehicle_ids_0 == vehicle_ids_prev:
+            if vehicle_ids_0.issubset(vehicle_ids_prev):
                 continue
+
             vehicle_ids_prev = vehicle_ids_0
+            for vehicle in sim.vehicles:
+                if vehicle.id not in vehicle_ids_0:
+                    sim.remove_vehicle(vehicle.id)
 
-            trajectory = [[S_0, id_to_action(acted_vehicle_id_0, vehicles_0), 0]]
-            num_idle_vehicles_prev = calc_num_idle_vehicles(acted_vehicle_id_0, vehicles_0)
+            env_snapshot = type(self)(
+                sim,
+                max_vehicle_num=self.max_vehicle_num,
+                max_vehicle_num_per_src_lane=self.max_vehicle_num_per_src_lane
+            )
 
-            t_prev = t_0
-            for t, raw_vehicles_t, acted_vehicle_id_t in self.raw_state_env.history[i+1:]:
-                restricted_raw_vehicles_t = [vehicle for vehicle in raw_vehicles_t
-                                                if vehicle.id in vehicle_ids_0]
-                S_t, vehicles_t = self._encode_state_from_vehicles(restricted_raw_vehicles_t)
-                A_t = id_to_action(acted_vehicle_id_t, vehicles_t)
-                cost_t_prev = num_idle_vehicles_prev * (t - t_prev)
+            env_snapshot.prev_included_vehicles = deepcopy(vehicles_0)
+            env_snapshot.raw_state_env.history.append([t_0, deepcopy(vehicles_0), ""])
 
-                trajectory[-1][2] = cost_t_prev
-                trajectory.append([S_t, A_t, 0])
-                if len(vehicles_t) == 0:
-                    break
+            res.append((S_0, env_snapshot))
 
-                t_prev = t
-                num_idle_vehicles_prev = calc_num_idle_vehicles(acted_vehicle_id_t, vehicles_t)
-
-            trajectories.append(trajectory)
-
-        return trajectories
+        return res
 
     def _encode_state_from_vehicles(self, vehicles: Iterable[Vehicle]) -> Tuple:
         vehicles_near_intersection = []

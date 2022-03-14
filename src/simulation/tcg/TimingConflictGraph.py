@@ -118,6 +118,15 @@ class TimingConflictGraph:
                     self.__add_edge_by_vtx(v1, v2, EdgeType.TYPE_3)
                     self.__add_edge_by_vtx(v2, v1, EdgeType.TYPE_3)
 
+    def remove_vertex(self, v: Vertex) -> None:
+        for in_e in v.in_edges:
+            in_e.v_from.out_edges.remove(in_e)
+            del self.__E[(in_e.v_from.id, in_e.v_to.id)]
+        for out_e in v.out_edges:
+            out_e.v_to.in_edges.remove(out_e)
+            del self.__E[(out_e.v_from.id, out_e.v_to.id)]
+        del self.__V[(v.vehicle.id, v.cz_id)]
+
     @property
     def V(self) -> Iterable[Vertex]:
         return self.__V.values()

@@ -100,6 +100,20 @@ class Simulator:
             v = self.__TCG.get_v_by_idx(vehicle, vehicle.trajectory[0])
             self.__event_queue.push(max(self.__timestamp + 1, vehicle.earliest_arrival_time), EventType.ARRIVAL, v)
 
+    def remove_vehicle(self, vehicle_id: str) -> None:
+        vehicle: Vehicle = self.__vehicles[vehicle_id]
+        for cz_id in vehicle.trajectory:
+            v = self.__TCG.get_v_by_idx(vehicle, cz_id)
+            self.__TCG.remove_vertex(v)
+        del self.__vehicles[vehicle.id]
+        buffer = []
+        while not self.__event_queue.empty():
+            buffer.append(self.__event_queue.top())
+            self.__event_queue.pop()
+        for ev in buffer:
+            if ev.vertex.vehicle.id != vehicle_id:
+                self.__event_queue.push(ev.time, ev.type, ev.vertex)
+
     def dump_traffic(self, path) -> None:
         vehicle_dicts = []
         for veh in self.__vehicles.values():
@@ -238,6 +252,9 @@ class Simulator:
         while not self.__event_queue.empty() and self.__event_queue.top().time == self.__timestamp:
             ev = self.__event_queue.top()
             self.__event_queue.pop()
+            if ev.vertex.vehicle.id not in self.__vehicles:
+                del ev
+                continue
             if ev.type == EventType.END_MOVING:
                 if ev.vertex.vehicle.on_last_cz():
                     ev.vertex.vehicle.set_state(VehicleState.WAITING)
@@ -264,8 +281,7 @@ class Simulator:
             else:
                 self.__prev_moved = True
         elif not self.__event_queue.empty():
-            assert self.__timestamp != self.__event_queue.top().time
-            self.__timestamp = min(self.__event_queue.top().time, self.__timestamp + 1)
+            self.__timestamp = self.__timestamp + 1
         else:
             if any([veh.state != VehicleState.LEFT for veh in self.__vehicles.values()]):
                 self.__status = "DEADLOCK"

@@ -21,6 +21,7 @@ class RawStateSimulatorEnv:
         self.deadlock_cost: int = deadlock_cost
 
         self.history: List[List[int, Iterable[Vehicle], str]] = []
+        self.sim_snapshots: List[Simulator] = []
 
     def render(self) -> None:
         if len(self.history) == 0:
@@ -43,6 +44,7 @@ class RawStateSimulatorEnv:
 
         timestamp, vehicles = self.sim.simulation_step_report()
         self.history = [[timestamp, deepcopy(vehicles), ""]]
+        self.sim_snapshots = [deepcopy(self.sim)]
 
         return vehicles
 
@@ -59,6 +61,7 @@ class RawStateSimulatorEnv:
         cur_timestamp, cur_vehicles = self.sim.simulation_step_report()
         self.history[-1][2] = acted_vehicle_id
         self.history.append([cur_timestamp, deepcopy(cur_vehicles), ""])
+        self.sim_snapshots.append(deepcopy(self.sim))
 
         # Calculate the delayed time cumulated from
         # the previous times step to the current time step
