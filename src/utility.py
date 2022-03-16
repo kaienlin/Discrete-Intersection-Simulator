@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-import json
 from typing import Dict, Any, Set, List, Tuple
+import json
+import fcntl
+import os
+import errno
+
 import numpy as np
 
 from simulation import Intersection
+
 
 class DynamicQtable:
     def __init__(self, action_num: int, init_state_num: int = 1<<16):
@@ -171,6 +176,7 @@ def read_intersection_from_json(file_path):
 
     return I
 
+
 def get_4cz_intersection():
     '''
                    N
@@ -185,3 +191,46 @@ def get_4cz_intersection():
     '''
     return read_intersection_from_json("../intersection_configs/2x2.json")
 
+
+class FileLock:
+    def __init__(self, path, mode="exclusive"):
+        self.path = path
+        try:
+            tmp_fd = os.open(path, os.O_CREAT | os.O_EXCL)
+            os.close(tmp_fd)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+
+        self.fd = os.open(path, os.O_RDWR)
+        self.locked = False
+        
+        assert mode in ("exclusive", "shared")
+        self.mode = mode
+
+    def acquire(self):
+        if self.locked:
+            return
+        if self.mode == "exclusive":
+            fcntl.flock(self.fd, fcntl.LOCK_EX)
+        elif self.mode == "shared":
+            fcntl.flock(self.fd, fcntl.LOCK_SH)
+        else:
+            raise
+        self.locked = True
+
+    def release(self):
+        if not self.locked:
+            return
+        fcntl.flock(self.fd, fcntl.LOCK_UN)
+        os.close(self.fd)
+        self.locked = False
+    
+    def __enter__(self):
+        self.acquire()
+
+    def __exit__(self, type, value, traceback):
+        self.release()
+
+    def __del__(self):
+        self.release()
