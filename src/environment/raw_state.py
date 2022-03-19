@@ -14,7 +14,7 @@ class RawStateSimulatorEnv:
     def __init__(
         self,
         simulator: Simulator,
-        deadlock_cost: int = 1e9
+        deadlock_cost: int = int(1e9)
     ):
         self.sim: Simulator = simulator
         self.intersection: Intersection = simulator.intersection

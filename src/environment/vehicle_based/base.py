@@ -10,7 +10,7 @@ from simulation.intersection import Intersection
 
 
 class VehicleBasedStateEnv:
-    deadlock_cost = 1e9
+    deadlock_cost = int(1e9)
     vehicle_state_values: Tuple[str] = ("waiting", "non-waiting")
 
     def __init__(
