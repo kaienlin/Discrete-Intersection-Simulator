@@ -1,7 +1,9 @@
-from typing import Dict, Set, Union, Tuple
+from typing import Dict, Set, Union, Tuple, Iterable
 import itertools
 
 from utility import Digraph
+from simulation import Vehicle, VehicleState
+from environment import RawStateSimulatorEnv
 from environment.position_based import PositionBasedStateEnv
 from environment.vehicle_based import VehicleBasedStateEnv
 
@@ -22,6 +24,8 @@ class IGreedyPolicy(Policy):
             return self.__decide_position_based(state)
         if isinstance(self.env, VehicleBasedStateEnv):
             return self.__decide_vehicle_based(state)
+        if isinstance(self.env, RawStateSimulatorEnv):
+            return self.__decide_raw(state)
         assert False
 
     def __decide_position_based(self, state: int) -> int:
@@ -80,6 +84,32 @@ class IGreedyPolicy(Policy):
                 G.remove_edge(cz1, cz2)
                 if vehicle_state.position > -1:
                     G.add_edge(vehicle_state.trajectory[vehicle_state.position], cz1)
+                if not cyclic:
+                    return i + 1
+
+        return 0
+
+    def __decide_raw(self, state: Iterable[Vehicle]) -> int:
+        G = Digraph()
+        for vehicle in state:
+            if 0 <= vehicle.idx_on_traj <= len(vehicle.trajectory) - 2:
+                cur_cz = vehicle.get_cur_cz()
+                next_cz = vehicle.get_next_cz()
+                G.add_edge(cur_cz, next_cz)
+
+        for i, vehicle in enumerate(state):
+            if vehicle.state == VehicleState.WAITING:
+                if vehicle.idx_on_traj >= len(vehicle.trajectory) - 2:
+                    return i + 1
+                cz1 = vehicle.trajectory[vehicle.idx_on_traj + 1]
+                cz2 = vehicle.trajectory[vehicle.idx_on_traj + 2]
+                G.add_edge(cz1, cz2)
+                if vehicle.idx_on_traj > -1:
+                    G.remove_edge(vehicle.get_cur_cz(), cz1)
+                cyclic = G.has_cycle()
+                G.remove_edge(cz1, cz2)
+                if vehicle.idx_on_traj > -1:
+                    G.add_edge(vehicle.get_cur_cz(), cz1)
                 if not cyclic:
                     return i + 1
 

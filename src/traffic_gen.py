@@ -48,9 +48,9 @@ def add_random_traffic(sim: Simulator, max_time=300, max_vehicle_num=8, p=0.05):
 def random_traffic_generator(
     intersection: Intersection,
     num_iter: int = 10000,
-    max_vehicle_num: int = 4,
-    poisson_parameter_list = [0.1, 0.3, 0.5, 0.7, 0.9],
-    mode: str = "eval"
+    max_vehicle_num: int = 8,
+    poisson_parameter_list = [0.5],
+    mode: str = "stream"
 ):
     cond = lambda _: True
     if num_iter > 0:
@@ -58,10 +58,10 @@ def random_traffic_generator(
     i = 0
     while cond(i):
         sim = Simulator(intersection)
-        if mode == "eval":
+        if mode == "stream":
             add_random_traffic(sim, max_vehicle_num=max_vehicle_num, max_time=300,
                                 p=random.choice(poisson_parameter_list) / 10)
-        elif mode == "train":
+        elif mode == "batch":
             add_single_batch_random_traffic(sim, max_vehicle_num=max_vehicle_num,
                                 p=random.choice(poisson_parameter_list) / 10)
         else:
@@ -86,7 +86,7 @@ def main(
     num: int = 10,
     max_vehicle_num: int = 4,
     poisson_parameter_list: List = [0.1, 0.3, 0.5],
-    mode: str = "eval"
+    mode: str = "stream"
 ):
     random.seed(seed)
     intersection: Intersection = read_intersection_from_json(intersection_file_path)

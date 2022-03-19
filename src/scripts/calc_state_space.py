@@ -4,14 +4,8 @@ import copy
 
 from utility import read_intersection_from_json
 from simulation import Intersection
+from environment.vehicle_based import VehicleBasedStateEnv
 from traffic_gen import get_src_traj_dict
-
-@dataclass(order=True, unsafe_hash=True)
-class VehicleState:
-    src_lane: str = ""
-    trajectory: Tuple[str] = field(default_factory=tuple)
-    position: int = -1
-    state: Literal["waiting", "non-waiting"] = "non-waiting"
 
 
 def gen_int_partitions(n: int, size: int) -> List[List[int]]:
@@ -24,10 +18,11 @@ def gen_int_partitions(n: int, size: int) -> List[List[int]]:
     return res
 
 
-def calculate_state_space_size(
+def construct_state_space(
     intersection: Intersection,
     max_vehicle_num: int,
-    max_queue_length: Optional[int] = None
+    max_queue_length: Optional[int] = None,
+    reduced: bool = True
 ):
     if max_queue_length is None:
         max_queue_length = max_vehicle_num
@@ -42,12 +37,12 @@ def calculate_state_space_size(
 
     def fill_src_lane(idx: int, cur_vehicle_num: int, actable: bool) -> int:
         if cur_vehicle_num == max_vehicle_num:
-            if actable:
+            if actable or not reduced:
                 res.append(tuple(sorted(copy.deepcopy(vehicle_list))))
                 return 1
             return 0
         if idx == len(src_traj_dict):
-            if actable:
+            if actable or not reduced:
                 res.append(tuple(sorted(copy.deepcopy(vehicle_list))))
                 return 1
             return 0
@@ -60,7 +55,7 @@ def calculate_state_space_size(
             for p in partitions:
                 new_vehicles = []
                 for num, traj in zip(p, possible_trajs):
-                    new_vehicles.extend([VehicleState(trajectory=traj) for _ in range(num)])
+                    new_vehicles.extend([VehicleBasedStateEnv.VehicleState(trajectory=traj) for _ in range(num)])
                 for num, traj in zip(p, possible_trajs):
                     if num > 0 and traj[0] not in used_cz:
                         for v in new_vehicles:
@@ -87,7 +82,7 @@ def calculate_state_space_size(
 
     def fill_cz(idx: int, cur_vehicle_num: int, actable: bool) -> int:
         if cur_vehicle_num == max_vehicle_num:
-            if actable:
+            if actable or not reduced:
                 res.append(tuple(sorted(copy.deepcopy(vehicle_list))))
                 return 1
             return 0
@@ -102,19 +97,21 @@ def calculate_state_space_size(
 
         # fill this cz with one vehicle
         used_cz.add(cz_id)
-        for traj in possible_trajs:
+        for traj in sorted(possible_trajs):
             traj = tuple(traj)
             next_cz = traj[traj.index(cz_id) + 1] if traj.index(cz_id) + 1 < len(traj) else "$"
             for state in possible_states:
                 if state == "waiting":
-                    if next_cz not in used_cz and next_cz != "$":
-                        waited_cz.add(next_cz)
-                        vehicle_list.append(VehicleState(trajectory=traj, position=0, state=state))
+                    if next_cz not in used_cz and (not reduced or next_cz != "$"):
+                        if next_cz != "$":
+                            waited_cz.add(next_cz)
+                        vehicle_list.append(VehicleBasedStateEnv.VehicleState(trajectory=traj, position=0, state=state))
                         size += fill_cz(idx + 1, cur_vehicle_num + 1, True)
                         vehicle_list.pop(-1)
-                        waited_cz.remove(next_cz)
+                        if next_cz != "$":
+                            waited_cz.remove(next_cz)
                 else:
-                    vehicle_list.append(VehicleState(trajectory=traj, position=0, state=state))
+                    vehicle_list.append(VehicleBasedStateEnv.VehicleState(trajectory=traj, position=0, state=state))
                     size += fill_cz(idx + 1, cur_vehicle_num + 1, actable)
                     vehicle_list.pop(-1)
         used_cz.remove(cz_id)
@@ -125,9 +122,4 @@ def calculate_state_space_size(
 
     num_states = fill_cz(0, 0, False)
 
-    return num_states
-
-
-if __name__ == "__main__":
-    intersection = read_intersection_from_json("../intersection_configs/2x2.json")
-    print(calculate_state_space_size(intersection, 8, 1))
+    return res

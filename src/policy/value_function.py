@@ -66,7 +66,7 @@ class QTablePolicy(Policy):
         if not all(np.isinf(v) for v in Q_state[1:]) and self.waiting_counter > self.max_waiting:
             print(f"[QTablePolicy] on state {state} max waiting time exceeded")
             Q_state[action] = np.inf
-            action = np.argmin(Q_state)
+            action = effective_actions[Q_state[effective_actions].argmin()]
 
         self.prev_state = state
         self.prev_action = action

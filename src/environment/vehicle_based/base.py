@@ -3,12 +3,14 @@ from __future__ import annotations
 from typing import Literal, Tuple, Dict, List
 from functools import lru_cache
 from dataclasses import dataclass, field
+from pathlib import Path
+import pickle
 
 from simulation.intersection import Intersection
 
 
 class VehicleBasedStateEnv:
-    DEADLOCK_COST = 1e9
+    deadlock_cost = int(1e9)
     vehicle_state_values: Tuple[str] = ("waiting", "non-waiting")
 
     def __init__(
@@ -30,6 +32,14 @@ class VehicleBasedStateEnv:
     @property
     def action_space_size(self) -> int:
         return self.max_vehicle_num + 1
+
+    def save_enc_dec_tables(self, path):
+        with open(path, "wb") as f:
+            pickle.dump((self.encoding_table, self.decoding_table), f)
+    
+    def load_enc_dec_tables(self, path):
+        with open(path, "rb") as f:
+            self.encoding_table, self.decoding_table = pickle.load(f)
 
     def is_actable_state(self, state: int) -> int:
         decoded_state = self.decode_state(state)

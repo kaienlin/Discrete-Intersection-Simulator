@@ -1,6 +1,8 @@
+from copy import deepcopy
 from typing import Tuple, Iterable, Set
 
 from environment.vehicle_based.base import VehicleBasedStateEnv
+from environment.raw_state import RawStateSimulatorEnv
 from simulation.simulator import Simulator
 from simulation.vehicle import Vehicle, VehicleState
 
@@ -13,64 +15,88 @@ class SimulatorEnv(VehicleBasedStateEnv):
         max_vehicle_num_per_src_lane: int = 1
     ):
         super().__init__(sim.intersection, max_vehicle_num)
-        self.sim: Simulator = sim
         self.max_vehicle_num_per_src_lane: int = max_vehicle_num_per_src_lane
+        
+        self.raw_state_env: RawStateSimulatorEnv = RawStateSimulatorEnv(sim, self.deadlock_cost)
 
-        self.prev_state: int = 0
-        self.prev_vehicles: Tuple[Vehicle] = tuple()
-        self.prev_timestamp: int = 0
-        self.prev_idle_veh: Set[str] = set()
+        self.prev_included_vehicles: Iterable[Vehicle] = tuple()
+
+    @property
+    def sim(self) -> Simulator:
+        return self.raw_state_env.sim
 
     def reset(self, new_sim=None):
-        if new_sim is not None:
-            self.sim = new_sim
-
-        self.sim.reset_simulation()
-        self.sim.run()
-
-        timestamp, vehicles = self.sim.simulation_step_report()
-        self.prev_timestamp = timestamp
-        self.prev_state, self.prev_vehicles = self._encode_state_from_vehicles(vehicles)
-        self.prev_idle_veh = {veh.id for veh in vehicles if self._is_idle_state(veh.state)}
-
-        return self.prev_state
+        self.raw_state_env.reset(new_sim=new_sim)
+        _, vehicles, _ = self.raw_state_env.history[-1]
+        state, self.prev_included_vehicles = self._encode_state_from_vehicles(vehicles)
+        return state
 
     def render(self) -> None:
-        print(f"State at time {self.prev_timestamp}")
-        for veh in self.prev_vehicles:
-            print(f"  - {veh.id} @{veh.get_cur_cz()} :{veh.state}")
+        print(f"State at time {self.raw_state_env.history[-1][0]}")
+        for vehicle in self.prev_included_vehicles:
+            print(f"{vehicle.id}: ", end="")
+            print(f"({vehicle.get_cur_cz()}) -> ({vehicle.get_next_cz()})", end="")
+            print(f"; [{vehicle.state.name.lower()}]", end="")
+            print("")
 
-    def step(self, action: int):
-        assert 0 <= action <= len(self.prev_vehicles)
-        veh_id: str = "" if action == 0 else self.prev_vehicles[action - 1].id
-        self.sim.simulation_step_act(veh_id)
+    def step(self, action: int) -> Tuple:
+        assert 0 <= action <= len(self.prev_included_vehicles)
+        acted_vehicle_id: str = "" if action == 0 else self.prev_included_vehicles[action - 1].id
+        
+        raw_action: int = 0
+        if action > 0:
+            prev_vehicles: Iterable[Vehicle] = self.raw_state_env.history[-1][1]
+            raw_action = 1
+            while raw_action <= len(prev_vehicles):
+                if prev_vehicles[raw_action - 1].id == acted_vehicle_id:
+                    break
+                raw_action += 1
+            else:
+                assert False
 
-        timestamp, vehicles = self.sim.simulation_step_report()
-        num_waiting = len(self.prev_idle_veh) - (1 if veh_id in self.prev_idle_veh else 0)
-        waiting_time_sum = (timestamp - self.prev_timestamp) * num_waiting
-        self.prev_timestamp = timestamp
+        _, delayed_time, terminal, _ = self.raw_state_env.step(raw_action)
 
-        next_state, included_vehicles = self._encode_state_from_vehicles(vehicles)
-        self.prev_state = next_state
-        self.prev_vehicles = included_vehicles
-        self.prev_idle_veh = {veh.id for veh in vehicles if self._is_idle_state(veh.state)}
+        cur_vehicles: Iterable[Vehicle] = self.raw_state_env.history[-1][1]
+        next_state, self.prev_included_vehicles = self._encode_state_from_vehicles(cur_vehicles)
 
-        terminal = self.sim.status != "RUNNING"
-        if terminal and self.sim.status == "DEADLOCK":
-            waiting_time_sum += self.DEADLOCK_COST
+        return next_state, delayed_time, terminal, {}
 
-        return next_state, waiting_time_sum, terminal, {}
+    def get_snapshots(self):
+        res = []
+        vehicle_ids_prev = set()
+        for i, (t_0, raw_vehicles_0, _) in enumerate(self.raw_state_env.history[:-1]):
+            S_0, vehicles_0 = self._encode_state_from_vehicles(raw_vehicles_0)
+            sim = self.raw_state_env.sim_snapshots[i]
 
-    @staticmethod
-    def _is_idle_state(state: VehicleState) -> bool:
-        return state in (VehicleState.WAITING, VehicleState.BLOCKED)
+            vehicle_ids_0 = {vehicle.id for vehicle in vehicles_0}
+            if vehicle_ids_0.issubset(vehicle_ids_prev):
+                continue
+
+            vehicle_ids_prev = vehicle_ids_0
+            for vehicle in sim.vehicles:
+                if vehicle.id not in vehicle_ids_0:
+                    sim.remove_vehicle(vehicle.id)
+
+            env_snapshot = type(self)(
+                sim,
+                max_vehicle_num=self.max_vehicle_num,
+                max_vehicle_num_per_src_lane=self.max_vehicle_num_per_src_lane
+            )
+
+            env_snapshot.prev_included_vehicles = deepcopy(vehicles_0)
+            env_snapshot.decoding_table = self.decoding_table
+            env_snapshot.encoding_table = self.encoding_table
+            env_snapshot.raw_state_env.history.append([t_0, deepcopy(vehicles_0), ""])
+
+            res.append((S_0, env_snapshot))
+
+        return res
 
     def _encode_state_from_vehicles(self, vehicles: Iterable[Vehicle]) -> Tuple:
         vehicles_near_intersection = []
         for vehicle in vehicles:
             if vehicle.state != VehicleState.LEFT \
-                and not (vehicle.idx_on_traj == -1 \
-                and vehicle.state not in [VehicleState.WAITING, VehicleState.BLOCKED]):
+                and vehicle.state != VehicleState.NOT_ARRIVED:
                 vehicles_near_intersection.append(vehicle)
 
         def vehicle_priority_func(vehicle: Vehicle) -> int:
