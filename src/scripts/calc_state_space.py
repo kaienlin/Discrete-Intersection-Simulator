@@ -4,7 +4,7 @@ import copy
 
 from utility import read_intersection_from_json
 from simulation import Intersection
-from environment.vehicle_based import VehicleBasedStateEnv
+from environment.tabular.vehicle_based import VehicleBasedStateEnv
 from traffic_gen import get_src_traj_dict
 
 

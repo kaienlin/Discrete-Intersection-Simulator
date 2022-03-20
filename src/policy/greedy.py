@@ -4,8 +4,8 @@ import itertools
 from utility import Digraph
 from simulation import Vehicle, VehicleState
 from environment import RawStateSimulatorEnv
-from environment.position_based import PositionBasedStateEnv
-from environment.vehicle_based import VehicleBasedStateEnv
+from environment.tabular.position_based import PositionBasedStateEnv
+from environment.tabular.vehicle_based import VehicleBasedStateEnv
 
 from .base import Policy
 

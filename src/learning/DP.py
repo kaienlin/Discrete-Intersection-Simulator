@@ -7,7 +7,7 @@ import environment
 from simulation import Intersection
 from utility import read_intersection_from_json
 
-def value_iteration(env: environment.position_based.ProbabilisticEnv, theta=1e-3, discount_factor=0.95):
+def value_iteration(env: environment.tabular.position_based.ProbabilisticEnv, theta=1e-3, discount_factor=0.95):
     def one_step_lookahead(state, V):
         A = np.zeros(env.action_space_size)
         effective_actions = [a for a in range(env.action_space_size) if env.is_effective_action_of_state(a, state)]
@@ -49,7 +49,7 @@ def main(
     intersection: Intersection = read_intersection_from_json(intersection_file_path)
     random.seed(seed)
     np.random.seed(seed)
-    env = environment.position_based.ProbabilisticEnv(intersection)
+    env = environment.tabular.position_based.ProbabilisticEnv(intersection)
     DP_policy = value_iteration(env, theta=theta, discount_factor=discount_factor)
     np.save(Q_table_path, DP_policy)
 

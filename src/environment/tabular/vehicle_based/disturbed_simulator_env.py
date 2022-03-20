@@ -1,6 +1,6 @@
 import random
 
-from environment.vehicle_based.simulator_env import SimulatorEnv
+from environment.tabular.vehicle_based.simulator_env import SimulatorEnv
 from simulation.simulator import Simulator
 from simulation.vehicle import VehicleState
 

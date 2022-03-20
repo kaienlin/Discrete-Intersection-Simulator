@@ -6,7 +6,7 @@ from traffic_gen import random_traffic_generator
 from utility import read_intersection_from_json
 from CP import solve_by_CP
 from policy import IGreedyPolicy
-from environment.vehicle_based import SimulatorEnv
+from environment.tabular.vehicle_based import SimulatorEnv
 from evaluate import evaluate
 
 seed = 0

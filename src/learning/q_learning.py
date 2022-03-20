@@ -33,7 +33,7 @@ def save_Q_table(Q: DynamicQtable, path):
 
 
 def train_Q(
-    env: environment.vehicle_based.SimulatorEnv,
+    env: environment.tabular.vehicle_based.SimulatorEnv,
     Q: DynamicQtable,
     seen_state: Optional[Dict] = None,
     alpha: float = 0.1,
@@ -147,7 +147,7 @@ def Q_learning(
 
     best_Q_table_path: Path = checkpoint_path / "Q.best.npy"
 
-    env = environment.vehicle_based.SimulatorEnv(sim, 
+    env = environment.tabular.vehicle_based.SimulatorEnv(sim, 
             max_vehicle_num=max_vehicle_num, max_vehicle_num_per_src_lane=max_vehicle_num_per_src_lane)
 
     if enc_dec_table_path.is_file():
@@ -195,7 +195,7 @@ def Q_learning(
 
 
 def explore_Q(
-    env: environment.vehicle_based.SimulatorEnv,
+    env: environment.tabular.vehicle_based.SimulatorEnv,
     Q: DynamicQtable,
     trajectories_record_file: Optional[Path] = None,
     epsilon: float = 0.2,
@@ -258,7 +258,7 @@ def exploration_only(
     enc_dec_table_path: Path = checkpoint_path / "enc_dec_table.p"
     Q_table_path: Path = checkpoint_path / "Q.npy"
 
-    env = environment.vehicle_based.SimulatorEnv(sim, 
+    env = environment.tabular.vehicle_based.SimulatorEnv(sim, 
             max_vehicle_num=max_vehicle_num, max_vehicle_num_per_src_lane=max_vehicle_num_per_src_lane)
 
     if enc_dec_table_path.is_file():

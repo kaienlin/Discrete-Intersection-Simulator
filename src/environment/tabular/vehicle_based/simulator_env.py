@@ -1,7 +1,7 @@
 from copy import deepcopy
 from typing import Tuple, Iterable, Set
 
-from environment.vehicle_based.base import VehicleBasedStateEnv
+from environment.tabular.vehicle_based.base import VehicleBasedStateEnv
 from environment.raw_state import RawStateSimulatorEnv
 from simulation.simulator import Simulator
 from simulation.vehicle import Vehicle, VehicleState

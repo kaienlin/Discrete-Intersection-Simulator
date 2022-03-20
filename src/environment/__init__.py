@@ -1,3 +1,3 @@
-from . import position_based
-from . import vehicle_based
+from . import tabular
+from . import func_approx
 from .raw_state import RawStateSimulatorEnv

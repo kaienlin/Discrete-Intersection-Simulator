@@ -3,7 +3,7 @@ import copy
 
 from simulation.simulator import Simulator
 from simulation.vehicle import Vehicle, VehicleState
-from environment.position_based.base import PositionBasedStateEnv
+from environment.tabular.position_based.base import PositionBasedStateEnv
 
 
 class SimulatorEnv(PositionBasedStateEnv):

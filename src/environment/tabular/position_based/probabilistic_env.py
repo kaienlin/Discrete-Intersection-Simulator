@@ -6,7 +6,7 @@ import math
 from tqdm import tqdm
 
 from simulation.intersection import Intersection
-from environment.position_based.base import PositionBasedStateEnv
+from environment.tabular.position_based.base import PositionBasedStateEnv
 from utility import Digraph
 
 
