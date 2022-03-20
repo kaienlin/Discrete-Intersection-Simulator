@@ -15,7 +15,7 @@ class config:
     # training
     is_cuda = True
     num_iterations = 100000
-    batch_size = 64
+    batch_size = 1
     lr = 1e-3
     betas = (0.9, 0.999)
     eps = 1e-6
@@ -23,7 +23,7 @@ class config:
 
     # data collection
     replay_buffer_max_length = 20000
-    collect_episodes_per_epoch = 10
+    collect_steps_per_epoch = 10
 
     # loggings
     log_iterval = 200
