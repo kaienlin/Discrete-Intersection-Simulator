@@ -7,7 +7,7 @@ from tf_agents.trajectories import time_step as ts
 import numpy as np
 
 from simulation import Simulator, Vehicle, VehicleState
-from environment import RawStateSimulatorEnv
+from environment.raw_state import RawStateSimulatorEnv
 
 
 class MinimumEnv(py_environment.PyEnvironment):
