@@ -54,7 +54,7 @@ class MinimumEnv(py_environment.PyEnvironment):
 
     def _reset(self):
         self.raw_state_env.reset()
-        _, vehicles, _ = self.raw_state_env.history[-1][1]
+        _, vehicles, _ = self.raw_state_env.history[-1]
         self._state, self.prev_included_vehicles = self._encode_state_from_vehicles(vehicles)
         self._episode_ended = False
         return ts.restart(self._state)
