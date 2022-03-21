@@ -33,7 +33,7 @@ class MinimumEnv(py_environment.PyEnvironment):
         self.sorted_cz_ids: Tuple[str] = tuple(sorted(self.sim.intersection.conflict_zones))
 
         self._action_spec = array_spec.BoundedArraySpec(
-            shape=(), dtype=np.int32, minimum=0, maximum=max_vehicle_num+1, name="action")
+            shape=(), dtype=np.int32, minimum=0, maximum=max_vehicle_num, name="action")
 
         self.field_sizes = (max(len(traj) for traj in self.sim.intersection.trajectories), 1, 1)
         self.state_size = sum(self.field_sizes) * max_vehicle_num
