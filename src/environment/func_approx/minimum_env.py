@@ -67,7 +67,7 @@ class MinimumEnv(py_environment.PyEnvironment):
         raw_action: int = 0
 
         if 0 < action <= len(self.prev_included_vehicles) \
-            and self.prev_included_vehicles[action - 1].state == "waiting":
+            and self.prev_included_vehicles[action - 1].state == VehicleState.WAITING:
             acted_vehicle_id = self.prev_included_vehicles[action - 1].id
 
             for i, vehicle in enumerate(self.raw_state_env.history[-1][1]):
