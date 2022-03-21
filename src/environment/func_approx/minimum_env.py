@@ -162,7 +162,7 @@ class MinimumEnv(py_environment.PyEnvironment):
 
             vehicle_state_list.append(vehicle_state)
 
-        indices = sorted(range(len(vehicle_state_list)), key=lambda i: vehicle_state_list[i])
+        indices = sorted(range(len(vehicle_state_list)), key=lambda i: vehicle_state_list[i].sum())
         included_vehicles = [included_vehicles[i] for i in indices]
 
         while len(vehicle_state_list) < self.max_vehicle_num:
