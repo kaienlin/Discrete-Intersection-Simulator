@@ -40,7 +40,7 @@ class MinimumEnv(py_environment.PyEnvironment):
         self._observation_spec = array_spec.BoundedArraySpec(
             shape=(self.state_size,), dtype=np.int32, minimum=0, name="observation")
 
-        self._state = np.zeros(self.state_size)
+        self._state = np.zeros(self.state_size, dtype=np.int32)
         self._episode_ended = False
 
     def action_spec(self):
@@ -49,8 +49,13 @@ class MinimumEnv(py_environment.PyEnvironment):
     def observation_spec(self):
         return self._observation_spec
 
+    def render(self):
+        self.raw_state_env.render()
+
     def _reset(self):
-        self._state = np.zeros(self.state_size, dtype=np.int32)
+        self.raw_state_env.reset()
+        _, vehicles, _ = self.raw_state_env.history[-1][1]
+        self._state, self.prev_included_vehicles = self._encode_state_from_vehicles(vehicles)
         self._episode_ended = False
         return ts.restart(self._state)
 
@@ -61,7 +66,7 @@ class MinimumEnv(py_environment.PyEnvironment):
         acted_vehicle_id: str = ""
         raw_action: int = 0
 
-        if action > 0 \
+        if 0 < action <= len(self.prev_included_vehicles) \
             and self.prev_included_vehicles[action - 1].state == "waiting":
             acted_vehicle_id = self.prev_included_vehicles[action - 1].id
 
@@ -157,10 +162,11 @@ class MinimumEnv(py_environment.PyEnvironment):
 
             vehicle_state_list.append(vehicle_state)
 
+        indices = sorted(range(len(vehicle_state_list)), key=lambda i: vehicle_state_list[i])
+        included_vehicles = [included_vehicles[i] for i in indices]
+
         while len(vehicle_state_list) < self.max_vehicle_num:
             vehicle_state_list.append(np.zeros(sum(self.field_sizes), dtype=np.int32))
 
-        indices = sorted(range(len(vehicle_state_list)), key=lambda i: vehicle_state_list[i])
-        included_vehicles = [included_vehicles[i] for i in indices]
         return np.concatenate(vehicle_state_list), included_vehicles
        
