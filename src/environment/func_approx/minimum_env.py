@@ -26,6 +26,7 @@ class MinimumEnv(py_environment.PyEnvironment):
         self.sim: Simulator = sim
         self.max_vehicle_num: int = max_vehicle_num
         self.deadlock_cost: int = deadlock_cost
+        self.is_snapshot = False
 
         self.raw_state_env: RawStateSimulatorEnv \
             = RawStateSimulatorEnv(sim, self.deadlock_cost)
@@ -52,8 +53,11 @@ class MinimumEnv(py_environment.PyEnvironment):
     def render(self):
         self.raw_state_env.render()
 
-    def _reset(self):
-        self.raw_state_env.reset()
+    def _reset(self, new_sim=None):
+        if self.is_snapshot:
+            self.is_snapshot = False
+            return ts.restart(self._state)
+        self.raw_state_env.reset(new_sim=new_sim)
         _, vehicles, _ = self.raw_state_env.history[-1]
         self._state, self.prev_included_vehicles = self._encode_state_from_vehicles(vehicles)
         self._episode_ended = False
@@ -112,8 +116,10 @@ class MinimumEnv(py_environment.PyEnvironment):
 
             env_snapshot.prev_included_vehicles = deepcopy(vehicles_0)
             env_snapshot.raw_state_env.history.append([t_0, deepcopy(vehicles_0), ""])
+            env_snapshot._state = S_0
+            env_snapshot.is_snapshot = True
 
-            res.append((S_0, env_snapshot))
+            res.append((env_snapshot._state, env_snapshot))
 
         return res
 
@@ -169,4 +175,3 @@ class MinimumEnv(py_environment.PyEnvironment):
             vehicle_state_list.append(np.zeros(sum(self.field_sizes), dtype=np.int32))
 
         return np.concatenate(vehicle_state_list), included_vehicles
-       
