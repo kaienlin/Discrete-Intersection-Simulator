@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import gym
+import os
+from datetime import datetime
 
 from tf_agents.typing.types import TensorSpec
 from tf_agents.environments.py_environment import PyEnvironment
@@ -13,6 +15,7 @@ from tf_agents.policies.random_tf_policy import RandomTFPolicy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.drivers.dynamic_step_driver import DynamicStepDriver
 from tf_agents.metrics import tf_metrics
+from tf_agents.utils import common
 
 # hyper-parameters
 from training.dqn.config import config
@@ -23,7 +26,14 @@ class DQNTrainer(object):
         self,
         env: PyEnvironment,
     ) -> None:
-        # self.train_py_env = suite_gym.load('CartPole-v0')
+        # model name
+        now = datetime.now()
+        time = now.strftime("%m-%d")
+        self.model_root = f'model-{time}'
+        self.ckpt_dir = os.path.join(self.model_root, 'checkpoints')
+        self.log_dir = os.path.join(self.model_root, 'loggings')
+
+        # environment
         self.train_env: TFEnvironment = TFPyEnvironment(env)
 
         # spec
@@ -32,6 +42,7 @@ class DQNTrainer(object):
         self.action_spec: TensorSpec = self.train_env.action_spec()
 
         # model architecture and agent
+        self.step = tf.Variable(0, dtype=tf.int64)
         self.q_net = self.configure_q_network()
         self.optimizer = self.configure_optimizer()
         self.dqn_agent = self.configure_agent()
@@ -54,7 +65,7 @@ class DQNTrainer(object):
 
         # loggings
         train_summary_writer = tf.summary.create_file_writer(
-            config.log_dir, 
+            self.log_dir, 
             flush_millis=10000
         )
         train_summary_writer.set_as_default()
@@ -67,6 +78,10 @@ class DQNTrainer(object):
 
         # driver for data collection
         self.collect_driver = self.configure_collect_driver()
+
+        # checkpointer
+        self.train_checkpointer = self.configure_checkpointer()
+        self.train_checkpointer.initialize_or_restore()
 
     def configure_q_network(self) -> QNetwork:
         return QNetwork(
@@ -93,7 +108,8 @@ class DQNTrainer(object):
             action_spec=self.action_spec,
             q_network=self.q_net,
             optimizer=self.optimizer,
-            td_errors_loss_fn=config.td_errors_loss_fn
+            td_errors_loss_fn=config.td_errors_loss_fn,
+            train_step_counter=self.step
         )
 
     def configure_random_policy(self) -> RandomTFPolicy:
@@ -112,15 +128,22 @@ class DQNTrainer(object):
     def configure_collect_driver(self) -> DynamicStepDriver:
         return DynamicStepDriver(
             env=self.train_env,
-            policy=self.collect_policy,
+            policy=self.policy,
             observers=self.rb_observer + self.train_metrics,
             num_steps=config.collect_steps_per_epoch
         )
     
-    def fit(self) -> None:
-        # initialize step counter
-        self.dqn_agent.train_step_counter.assign(0)
+    def configure_checkpointer(self) -> common.Checkpointer:
+        return common.Checkpointer(
+            ckpt_dir=self.ckpt_dir,
+            max_to_keep=config.ckpt_kept_num,
+            agent=self.dqn_agent,
+            policy=self.policy,
+            replay_buffer=self.replay_buffer,
+            global_step=self.step
+        )
 
+    def fit(self) -> None:
         # reset environment
         time_step = self.train_env.reset()
 
@@ -138,6 +161,9 @@ class DQNTrainer(object):
 
             if step % config.log_iterval == 0:
                 print(f'[LOG] STEP {step} | LOSS {train_loss:.5f}')
+
+            if step % config.ckpt_interval == 0:
+                self.train_checkpointer.save(step)
 
             for train_metric in self.train_metrics:
                 train_metric.tf_summaries(step_metrics=self.train_metrics[:2])

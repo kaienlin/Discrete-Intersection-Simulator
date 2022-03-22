@@ -27,4 +27,5 @@ class config:
 
     # loggings
     log_iterval = 200
-    log_dir = 'loggings'
+    ckpt_interval = 500
+    ckpt_kept_num = 5
