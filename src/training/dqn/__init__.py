@@ -1,1 +1,1 @@
-from trainer import dqn_trainer
+from .trainer import DQNTrainer

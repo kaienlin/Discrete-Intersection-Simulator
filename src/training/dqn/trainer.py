@@ -15,18 +15,16 @@ from tf_agents.drivers.dynamic_step_driver import DynamicStepDriver
 from tf_agents.metrics import tf_metrics
 
 # hyper-parameters
-from config import config
+from training.dqn.config import config
 
 class DQNTrainer(object):
 
     def __init__(
         self,
-        env: gym.Env,
+        env: PyEnvironment,
     ) -> None:
-        # environment
-        self.train_py_env: PyEnvironment = suite_gym.wrap_env(env)
         # self.train_py_env = suite_gym.load('CartPole-v0')
-        self.train_env: TFEnvironment = TFPyEnvironment(self.train_py_env)
+        self.train_env: TFEnvironment = TFPyEnvironment(env)
 
         # spec
         self.time_step_spec: TensorSpec = self.train_env.time_step_spec()
