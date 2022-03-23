@@ -29,3 +29,7 @@ class config:
     log_iterval = 200
     ckpt_interval = 500
     ckpt_kept_num = 5
+
+    # validation
+    valid_data_dir = "../testdata/test-2x2-s/"
+    valid_interval = 500

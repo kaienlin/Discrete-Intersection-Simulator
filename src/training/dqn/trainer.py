@@ -20,6 +20,9 @@ from tf_agents.utils import common
 # hyper-parameters
 from training.dqn.config import config
 
+from evaluate import batch_evaluate_tf
+from traffic_gen import datadir_traffic_generator
+
 class DQNTrainer(object):
 
     def __init__(
@@ -32,6 +35,9 @@ class DQNTrainer(object):
         self.model_root = f'model-{time}'
         self.ckpt_dir = os.path.join(self.model_root, 'checkpoints')
         self.log_dir = os.path.join(self.model_root, 'loggings')
+
+        self.intersection = env.intersection
+        self.max_vehicle_num = env.max_vehicle_num
 
         # environment
         self.train_env: TFEnvironment = TFPyEnvironment(env)
@@ -161,6 +167,11 @@ class DQNTrainer(object):
 
             if step % config.log_iterval == 0:
                 print(f'[LOG] STEP {step} | LOSS {train_loss:.5f}')
+
+            if step % config.valid_interval == 0:
+                sim_gen = datadir_traffic_generator(self.intersection, config.valid_data_dir)
+                avg_reward = batch_evaluate_tf(self.dqn_agent.policy, sim_gen, self.max_vehicle_num)
+                print(f"Validation Reward = {avg_reward}")
 
             if step % config.ckpt_interval == 0:
                 self.train_checkpointer.save(step)

@@ -8,11 +8,14 @@ import numpy as np
 import fire
 
 from environment.tabular import position_based, vehicle_based
+from environment.func_approx import MinimumEnv
 from simulation import Simulator, Intersection
 from utility import read_intersection_from_json
 from CP import solve_by_CP
 import traffic_gen
 import policy
+
+from tf_agents.environments.tf_py_environment import TFPyEnvironment
 
 
 def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_based.SimulatorEnv]):
@@ -47,6 +50,42 @@ def batch_evaluate(
     for sim in sim_gen:
         env.reset(new_sim=sim)
         c = evaluate(P, env)
+        c_list.append(c)
+    return sum(c_list) / len(c_list)
+
+
+def evaluate_tf(P, env, sim):
+    if len(sim.vehicles) == 0:
+        return 0
+
+    time_step = env.reset()
+    prev_observation = time_step.observation.numpy().copy().astype(np.int32)
+    timeout_counter = 0
+    cumulative_reward = 0
+    timeout_threshold = 100
+    while not time_step.is_last():
+        action = P.action(time_step)
+        time_step = env.step(action)
+        cumulative_reward += time_step.reward
+    
+        if (time_step.observation.numpy().astype(np.int32) == prev_observation).all():
+            timeout_counter += 1
+        else:
+            timeout_counter = 1
+            prev_observation = time_step.observation.numpy().copy().astype(np.int32)
+
+        if timeout_counter >= timeout_threshold:
+            cumulative_reward -= int(1e9)
+            break
+
+    return cumulative_reward / 10 / len(sim.vehicles)
+
+
+def batch_evaluate_tf(P, sim_gen, max_vehicle_num):
+    c_list = []
+    for sim in sim_gen:
+        env = TFPyEnvironment(MinimumEnv(sim, max_vehicle_num))
+        c = evaluate_tf(P, env, sim)
         c_list.append(c)
     return sum(c_list) / len(c_list)
 
