@@ -4,7 +4,6 @@ import numpy as np
 import gym
 import os
 from datetime import datetime
-from copy import deepcopy
 
 from tf_agents.typing.types import TensorSpec
 from tf_agents.environments.py_environment import PyEnvironment
@@ -39,10 +38,10 @@ class DQNTrainer(object):
         self.log_dir = os.path.join(self.model_root, 'loggings')
 
         self.intersection = env.intersection
+        self.max_vehicle_num = env.max_vehicle_num
 
         # environment
         self.train_env: TFEnvironment = TFPyEnvironment(env)
-        self.eval_env: PyEnvironment = MinimumEnv(deepcopy(env.sim), env.max_vehicle_num)
 
         # spec
         self.time_step_spec: TensorSpec = self.train_env.time_step_spec()
@@ -172,8 +171,8 @@ class DQNTrainer(object):
 
             if step % config.valid_interval == 0:
                 sim_gen = datadir_traffic_generator(self.intersection, config.valid_data_dir)
-                avg_reward = batch_evaluate_ts(self.dqn_agent.policy, self.eval_env, sim_gen)
-                print(f"Validation reward = {avg_reward}")
+                avg_reward = batch_evaluate_tf(self.dqn_agent.policy, sim_gen, self.max_vehicle_num)
+                print(f"Validation Reward = {avg_reward}")
 
             if step % config.ckpt_interval == 0:
                 self.train_checkpointer.save(step)

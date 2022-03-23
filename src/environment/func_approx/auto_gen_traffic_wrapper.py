@@ -20,6 +20,14 @@ class AutoGenTrafficWrapperEnv(py_environment.PyEnvironment):
     @property
     def max_vehicle_num(self):
         return self.origin_env.max_vehicle_num
+    
+    @property
+    def sim(self):
+        return self.origin_env.sim
+    
+    @property
+    def intersection(self):
+        return self.origin_env.sim.intersection
 
     def action_spec(self):
         return self.origin_env.action_spec()
