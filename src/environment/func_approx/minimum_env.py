@@ -84,7 +84,6 @@ class MinimumEnv(py_environment.PyEnvironment):
         cur_vehicles: Iterable[Vehicle] = self.raw_state_env.history[-1][1]
         next_state, self.prev_included_vehicles = self._encode_state_from_vehicles(cur_vehicles)
 
-        # To make reward positive
         reward = -delayed_time
 
         if self._episode_ended:
