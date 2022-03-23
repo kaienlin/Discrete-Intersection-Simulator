@@ -57,10 +57,16 @@ def evaluate_ts(P, env):
 
     time_step = env.reset()
     cumulative_reward = 0
+    timeout = 10000
+    cnt = 0
     while not time_step.is_last():
         action = P.action(time_step)
         time_step = env.step(action)
         cumulative_reward += time_step.reward
+        cnt += 1
+        if cnt > timeout:
+            print("TIMEOUT")
+            break
 
     return cumulative_reward / 10 / len(env.sim.vehicles)
 
