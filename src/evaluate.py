@@ -59,16 +59,22 @@ def evaluate_tf(P, env, sim):
         return 0
 
     time_step = env.reset()
+    prev_observation = time_step.observation.numpy().copy().astype(np.int32)
+    timeout_counter = 0
     cumulative_reward = 0
-    timeout = 1000
-    cnt = 0
+    timeout_threshold = 100
     while not time_step.is_last():
         action = P.action(time_step)
         time_step = env.step(action)
         cumulative_reward += time_step.reward
-        cnt += 1
-        if cnt > timeout:
-            print("TIMEOUT")
+    
+        if (time_step.observation.numpy().astype(np.int32) == prev_observation).all():
+            timeout_counter += 1
+        else:
+            timeout_counter = 1
+            prev_observation = time_step.observation.numpy().copy().astype(np.int32)
+
+        if timeout_counter >= timeout_threshold:
             cumulative_reward -= int(1e9)
             break
 

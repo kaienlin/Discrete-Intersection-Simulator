@@ -32,4 +32,4 @@ class config:
 
     # validation
     valid_data_dir = "../testdata/test-2x2-s/"
-    valid_interval = 200
+    valid_interval = 500
