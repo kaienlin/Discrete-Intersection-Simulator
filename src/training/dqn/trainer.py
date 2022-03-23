@@ -20,7 +20,7 @@ from tf_agents.utils import common
 # hyper-parameters
 from training.dqn.config import config
 
-from evaluate import batch_evaluate_ts
+from evaluate import batch_evaluate_tf
 from traffic_gen import datadir_traffic_generator
 
 class DQNTrainer(object):
