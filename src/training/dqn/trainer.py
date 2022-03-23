@@ -1,4 +1,3 @@
-from environment.func_approx.minimum_env import MinimumEnv
 import tensorflow as tf
 import numpy as np
 import gym
