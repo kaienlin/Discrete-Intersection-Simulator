@@ -20,6 +20,9 @@ from tf_agents.utils import common
 # hyper-parameters
 from training.dqn.config import config
 
+from evaluate import batch_evaluate_ts
+from traffic_gen import datadir_traffic_generator
+
 class DQNTrainer(object):
 
     def __init__(
@@ -161,6 +164,11 @@ class DQNTrainer(object):
 
             if step % config.log_iterval == 0:
                 print(f'[LOG] STEP {step} | LOSS {train_loss:.5f}')
+
+            if step % config.valid_interval == 0:
+                sim_gen = datadir_traffic_generator(self.train_env.sim.intersection, config.valid_data_dir)
+                avg_reward = batch_evaluate_ts(self.dqn_agent.policy, self.eval_env, sim_gen)
+                print(f"Validation reward = {avg_reward}")
 
             if step % config.ckpt_interval == 0:
                 self.train_checkpointer.save(step)

@@ -51,6 +51,29 @@ def batch_evaluate(
     return sum(c_list) / len(c_list)
 
 
+def evaluate_ts(P, env):
+    if len(env.sim.vehicles) == 0:
+        return 0
+
+    time_step = env.reset()
+    cumulative_reward = 0
+    while not time_step.is_last():
+        action = P.action(time_step)
+        time_step = env.step(action)
+        cumulative_reward += time_step.reward
+
+    return cumulative_reward / 10 / len(env.sim.vehicles)
+
+
+def batch_evaluate_ts(P, env, sim_gen):
+    c_list = []
+    for sim in sim_gen:
+        env.sim = sim
+        c = evaluate_ts(P, env)
+        c_list.append(c)
+    return sum(c_list) / len(c_list)
+
+
 def main(
     intersection_file_path: str,
     traffic_data_dir: str,
