@@ -12,6 +12,7 @@ from tf_agents.environments.tf_py_environment import TFPyEnvironment
 from tf_agents.networks.q_network import QNetwork
 from tf_agents.agents.dqn.dqn_agent import DqnAgent
 from tf_agents.policies.random_tf_policy import RandomTFPolicy
+from tf_agents.policies.q_policy import QPolicy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.drivers.dynamic_step_driver import DynamicStepDriver
 from tf_agents.metrics import tf_metrics
@@ -22,6 +23,11 @@ from training.dqn.config import config
 
 from evaluate import batch_evaluate_tf
 from traffic_gen import datadir_traffic_generator
+
+
+def observation_and_action_constraint_splitter(observation):
+    return observation["observation"], observation["valid_actions"]
+
 
 class DQNTrainer(object):
 
@@ -38,6 +44,7 @@ class DQNTrainer(object):
 
         self.intersection = env.intersection
         self.max_vehicle_num = env.max_vehicle_num
+        self.observation_decoder = env.decode_state
 
         # environment
         self.train_env: TFEnvironment = TFPyEnvironment(env)
@@ -91,7 +98,7 @@ class DQNTrainer(object):
 
     def configure_q_network(self) -> QNetwork:
         return QNetwork(
-            input_tensor_spec=self.observation_spec,
+            input_tensor_spec=self.observation_spec["observation"],
             action_spec=self.action_spec,
             conv_layer_params=config.conv_layer_params,
             fc_layer_params=config.fc_layer_params,
@@ -115,13 +122,23 @@ class DQNTrainer(object):
             q_network=self.q_net,
             optimizer=self.optimizer,
             td_errors_loss_fn=config.td_errors_loss_fn,
-            train_step_counter=self.step
+            train_step_counter=self.step,
+            observation_and_action_constraint_splitter=observation_and_action_constraint_splitter
         )
 
     def configure_random_policy(self) -> RandomTFPolicy:
         return RandomTFPolicy(
             time_step_spec=self.time_step_spec,
-            action_spec=self.action_spec
+            action_spec=self.action_spec,
+            observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
+        )
+
+    def configure_eval_policy(self) -> QPolicy:
+        return QPolicy(
+            time_step_spec=self.time_step_spec,
+            action_spec=self.action_spec,
+            q_network=self.q_net,
+            observation_and_action_constraint_splitter=observation_and_action_constraint_splitter
         )
 
     def configure_replay_buffer(self):
@@ -170,7 +187,7 @@ class DQNTrainer(object):
 
             if step % config.valid_interval == 0:
                 sim_gen = datadir_traffic_generator(self.intersection, config.valid_data_dir)
-                avg_reward = batch_evaluate_tf(self.dqn_agent.policy, sim_gen, self.max_vehicle_num)
+                avg_reward = batch_evaluate_tf(self.configure_eval_policy(), sim_gen, self.max_vehicle_num)
                 print(f"Validation Reward = {avg_reward}")
 
             if step % config.ckpt_interval == 0:

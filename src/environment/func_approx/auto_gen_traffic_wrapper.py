@@ -29,6 +29,9 @@ class AutoGenTrafficWrapperEnv(py_environment.PyEnvironment):
     def intersection(self):
         return self.origin_env.sim.intersection
 
+    def decode_state(self, state):
+        return self.origin_env.decode_state(state)
+
     def action_spec(self):
         return self.origin_env.action_spec()
 
