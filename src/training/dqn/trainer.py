@@ -12,6 +12,7 @@ from tf_agents.environments.tf_py_environment import TFPyEnvironment
 from tf_agents.networks.q_network import QNetwork
 from tf_agents.agents.dqn.dqn_agent import DqnAgent
 from tf_agents.policies.random_tf_policy import RandomTFPolicy
+from tf_agents.policies.q_policy import QPolicy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.drivers.dynamic_step_driver import DynamicStepDriver
 from tf_agents.metrics import tf_metrics
@@ -22,6 +23,7 @@ from training.dqn.config import config
 
 from evaluate import batch_evaluate_tf
 from traffic_gen import datadir_traffic_generator
+
 
 class DQNTrainer(object):
 
@@ -38,6 +40,7 @@ class DQNTrainer(object):
 
         self.intersection = env.intersection
         self.max_vehicle_num = env.max_vehicle_num
+        self.observation_decoder = env.decode_state
 
         # environment
         self.train_env: TFEnvironment = TFPyEnvironment(env)
@@ -124,6 +127,33 @@ class DQNTrainer(object):
             action_spec=self.action_spec
         )
 
+    def configure_eval_policy(self) -> QPolicy:
+        def splitter(observation):
+            action_mask = [0 for _ in range(self.max_vehicle_num + 1)]
+            vehicles = self.observation_decoder(observation)
+
+            occupied_cz = set()
+            for trajectory, position, state in vehicles:
+                if position >= 0:
+                    occupied_cz.add(trajectory[position])
+
+            for i, (trajectory, position, state) in enumerate(vehicles):
+                if state:
+                    action_mask[i + 1] = 1
+                if not state and position != len(trajectory) - 1:
+                    next_cz = trajectory[position + 1]
+                    if next_cz not in occupied_cz:
+                        action_mask[0] = 1
+
+            return observation, tf.convert_to_tensor(action_mask, dtype=np.int32)
+
+        return QPolicy(
+            time_step_spec=self.time_step_spec,
+            action_spec=self.action_spec,
+            q_network=self.q_net,
+            observation_and_action_constraint_splitter=splitter
+        )
+
     def configure_replay_buffer(self):
         return tf_uniform_replay_buffer.TFUniformReplayBuffer(
             self.dqn_agent.collect_data_spec,
@@ -170,7 +200,7 @@ class DQNTrainer(object):
 
             if step % config.valid_interval == 0:
                 sim_gen = datadir_traffic_generator(self.intersection, config.valid_data_dir)
-                avg_reward = batch_evaluate_tf(self.dqn_agent.policy, sim_gen, self.max_vehicle_num)
+                avg_reward = batch_evaluate_tf(self.configure_eval_policy(), sim_gen, self.max_vehicle_num)
                 print(f"Validation Reward = {avg_reward}")
 
             if step % config.ckpt_interval == 0:
