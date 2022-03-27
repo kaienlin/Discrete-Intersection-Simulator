@@ -175,7 +175,7 @@ class MinimumEnv(py_environment.PyEnvironment):
             for i, cz_id in enumerate(vehicle.trajectory[max(vehicle.idx_on_traj, 0):]):
                 vehicle_state[i] = self.sorted_cz_ids.index(cz_id) + 1
 
-            vehicle_state[self.field_sizes[0]] = vehicle.idx_on_traj + 2
+            vehicle_state[self.field_sizes[0]] = min(0, vehicle.idx_on_traj)
 
             if vehicle.state == VehicleState.WAITING:
                 vehicle_state[self.field_sizes[0] + 1] = 1
