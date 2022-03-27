@@ -25,6 +25,10 @@ from evaluate import batch_evaluate_tf
 from traffic_gen import datadir_traffic_generator
 
 
+def observation_and_action_constraint_splitter(observation):
+    return observation["observation"], observation["valid_actions"]
+
+
 class DQNTrainer(object):
 
     def __init__(
@@ -94,7 +98,7 @@ class DQNTrainer(object):
 
     def configure_q_network(self) -> QNetwork:
         return QNetwork(
-            input_tensor_spec=self.observation_spec,
+            input_tensor_spec=self.observation_spec["observation"],
             action_spec=self.action_spec,
             conv_layer_params=config.conv_layer_params,
             fc_layer_params=config.fc_layer_params,
@@ -118,40 +122,23 @@ class DQNTrainer(object):
             q_network=self.q_net,
             optimizer=self.optimizer,
             td_errors_loss_fn=config.td_errors_loss_fn,
-            train_step_counter=self.step
+            train_step_counter=self.step,
+            observation_and_action_constraint_splitter=observation_and_action_constraint_splitter
         )
 
     def configure_random_policy(self) -> RandomTFPolicy:
         return RandomTFPolicy(
             time_step_spec=self.time_step_spec,
-            action_spec=self.action_spec
+            action_spec=self.action_spec,
+            observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
         )
 
     def configure_eval_policy(self) -> QPolicy:
-        def splitter(observation):
-            action_mask = [0 for _ in range(self.max_vehicle_num + 1)]
-            vehicles = self.observation_decoder(observation)
-
-            occupied_cz = set()
-            for trajectory, position, state in vehicles:
-                if position >= 0:
-                    occupied_cz.add(trajectory[position])
-
-            for i, (trajectory, position, state) in enumerate(vehicles):
-                if state:
-                    action_mask[i + 1] = 1
-                if not state and position != len(trajectory) - 1:
-                    next_cz = trajectory[position + 1]
-                    if next_cz not in occupied_cz:
-                        action_mask[0] = 1
-
-            return observation, tf.convert_to_tensor(action_mask, dtype=np.int32)
-
         return QPolicy(
             time_step_spec=self.time_step_spec,
             action_spec=self.action_spec,
             q_network=self.q_net,
-            observation_and_action_constraint_splitter=splitter
+            observation_and_action_constraint_splitter=observation_and_action_constraint_splitter
         )
 
     def configure_replay_buffer(self):

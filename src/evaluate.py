@@ -59,22 +59,25 @@ def evaluate_tf(P, env, sim):
         return 0
 
     time_step = env.reset()
-    prev_observation = time_step.observation.numpy().copy().astype(np.int32)
+    prev_observation = time_step.observation["observation"].numpy().copy().astype(np.int32)
     timeout_counter = 0
     cumulative_reward = 0
-    timeout_threshold = 100
+    timeout_threshold = 200
     while not time_step.is_last():
         action = P.action(time_step)
+        #print(time_step.observation["valid_actions"])
+        #print(action)
         time_step = env.step(action)
         cumulative_reward += time_step.reward
     
-        if (time_step.observation.numpy().astype(np.int32) == prev_observation).all():
+        if (time_step.observation["observation"].numpy().astype(np.int32) == prev_observation).all():
             timeout_counter += 1
         else:
             timeout_counter = 1
-            prev_observation = time_step.observation.numpy().copy().astype(np.int32)
+            prev_observation = time_step.observation["observation"].numpy().copy().astype(np.int32)
 
         if timeout_counter >= timeout_threshold:
+            print("TIMEOUT")
             cumulative_reward -= int(1e9)
             break
 
@@ -87,7 +90,7 @@ def batch_evaluate_tf(P, sim_gen, max_vehicle_num):
         env = TFPyEnvironment(MinimumEnv(sim, max_vehicle_num))
         c = evaluate_tf(P, env, sim)
         c_list.append(c)
-    return sum(c_list) / len(c_list)
+    return [c.numpy()[0] for c in c_list]
 
 
 def main(

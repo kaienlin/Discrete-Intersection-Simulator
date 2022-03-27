@@ -38,8 +38,12 @@ class MinimumEnv(py_environment.PyEnvironment):
 
         self.field_sizes = (max(len(traj) for traj in self.sim.intersection.trajectories), 1, 1)
         self.state_size = sum(self.field_sizes) * max_vehicle_num
-        self._observation_spec = array_spec.BoundedArraySpec(
-            shape=(self.state_size,), dtype=np.int32, minimum=0, name="observation")
+        self._observation_spec = {
+            "observation": array_spec.BoundedArraySpec(
+                shape=(self.state_size,), dtype=np.int32, minimum=0, name="observation"),
+            "valid_actions": array_spec.ArraySpec(
+                shape=(self.max_vehicle_num + 1, ), dtype=np.bool_, name="valid_actions")
+        }
 
         self._state = np.zeros(self.state_size, dtype=np.int32)
         self._episode_ended = False
@@ -51,7 +55,12 @@ class MinimumEnv(py_environment.PyEnvironment):
         return self._observation_spec
 
     def render(self):
-        self.raw_state_env.render()
+        print(f"t = {self.raw_state_env.history[-1][0]}")
+        for vehicle in self.prev_included_vehicles:
+            print(f"{vehicle.id}: ", end="")
+            print(f"({vehicle.get_cur_cz()}) -> ({vehicle.get_next_cz()})", end="")
+            print(f"; {vehicle.state.name.lower()}", end="")
+            print("")
 
     def decode_state(self, state):
         vehicles = []
@@ -68,15 +77,51 @@ class MinimumEnv(py_environment.PyEnvironment):
             vehicles.append(vehicle)
         return vehicles
 
+    def get_valid_action_mask(self, state):
+        vehicles = self.decode_state(state)
+        action_mask = [False for _ in range(self.max_vehicle_num+1)]
+        occupied_cz = set()
+        waiting_src_lane = set()
+        for trajectory, position, state in vehicles:
+            if position >= 0:
+                occupied_cz.add(trajectory[position])
+            elif state:
+                waiting_src_lane.add(tuple(trajectory))
+        
+        someone_waiting = False
+        for i, (trajectory, position, state) in enumerate(vehicles):
+            if state:
+                action_mask[i + 1] = True
+                someone_waiting = True
+            if not state and not (position == -1 and tuple(trajectory) in waiting_src_lane):
+                if position != len(trajectory) - 1:
+                    next_cz = trajectory[position + 1]
+                    if next_cz not in occupied_cz:
+                        action_mask[0] = True
+                else:
+                    action_mask[0] = True
+
+        if not someone_waiting:
+            action_mask[0] = True
+
+        return np.array(action_mask, dtype=np.bool_)
+
+    def make_observation(self, state):
+        ret = {
+            "observation": state,
+            "valid_actions": self.get_valid_action_mask(state)
+        }
+        return ret
+
     def _reset(self, new_sim=None):
         if self.is_snapshot:
             self.is_snapshot = False
-            return ts.restart(self._state)
+            return ts.restart(self.make_observation(self._state))
         self.raw_state_env.reset(new_sim=new_sim)
         _, vehicles, _ = self.raw_state_env.history[-1]
         self._state, self.prev_included_vehicles = self._encode_state_from_vehicles(vehicles)
         self._episode_ended = False
-        return ts.restart(self._state)
+        return ts.restart(self.make_observation(self._state))
 
     def _step(self, action: int):
         if self._episode_ended:
@@ -102,9 +147,9 @@ class MinimumEnv(py_environment.PyEnvironment):
         reward = -delayed_time
 
         if self._episode_ended:
-            return ts.termination(next_state, reward)
+            return ts.termination(self.make_observation(next_state), reward)
 
-        return ts.transition(next_state, reward=reward, discount=1.0)
+        return ts.transition(self.make_observation(next_state), reward=reward, discount=1.0)
 
     def get_snapshots(self):
         res = []
@@ -184,6 +229,7 @@ class MinimumEnv(py_environment.PyEnvironment):
 
         indices = sorted(range(len(vehicle_state_list)), key=lambda i: vehicle_state_list[i].sum())
         included_vehicles = [included_vehicles[i] for i in indices]
+        vehicle_state_list = [vehicle_state_list[i] for i in indices]
 
         while len(vehicle_state_list) < self.max_vehicle_num:
             vehicle_state_list.append(np.zeros(sum(self.field_sizes), dtype=np.int32))
