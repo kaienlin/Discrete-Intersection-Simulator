@@ -53,6 +53,21 @@ class MinimumEnv(py_environment.PyEnvironment):
     def render(self):
         self.raw_state_env.render()
 
+    def decode_state(self, state):
+        vehicles = []
+        sz = sum(self.field_sizes)
+        for i in range(self.max_vehicle_num):
+            vec = state[i * sz: i * sz + sz]
+            if vec[self.field_sizes[0]] == 0:
+                break
+            vehicle = ([], vec[self.field_sizes[0]] - 2, bool(vec[self.field_sizes[0] + 1]))
+            for j in range(self.field_sizes[0]):
+                if vec[j] == 0:
+                    break
+                vehicle[0].append(self.sorted_cz_ids[vec[j] - 1])
+            vehicles.append(vehicle)
+        return vehicles
+
     def _reset(self, new_sim=None):
         if self.is_snapshot:
             self.is_snapshot = False
@@ -158,7 +173,7 @@ class MinimumEnv(py_environment.PyEnvironment):
             vehicle_state = np.zeros(sum(self.field_sizes), dtype=np.int32)
 
             for i, cz_id in enumerate(vehicle.trajectory[max(vehicle.idx_on_traj, 0):]):
-                vehicle_state[i] = self.sorted_cz_ids.index(cz_id)
+                vehicle_state[i] = self.sorted_cz_ids.index(cz_id) + 1
 
             vehicle_state[self.field_sizes[0]] = vehicle.idx_on_traj + 2
 
