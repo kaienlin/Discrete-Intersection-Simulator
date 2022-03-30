@@ -229,8 +229,5 @@ class DQNTrainer(object):
             if step % config.ckpt_interval == 0:
                 self.train_checkpointer.save(step)
 
-            if step % config.ckpt_interval == 0:
-                self.train_checkpointer.save(step)
-
             for train_metric in self.train_metrics:
                 train_metric.tf_summaries(step_metrics=self.train_metrics[:2])
