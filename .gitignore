@@ -153,3 +153,7 @@ dmypy.json
 
 # training files
 loggings/
+checkpoints/
+
+# testing script
+example.py
