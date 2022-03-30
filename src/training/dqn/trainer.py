@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import os
+import reverb
 from datetime import datetime
 
 from tf_agents.typing.types import TensorSpec
@@ -11,12 +12,13 @@ from tf_agents.networks.q_network import QNetwork
 from tf_agents.agents import TFAgent
 from tf_agents.agents.dqn.dqn_agent import DqnAgent, DdqnAgent
 from tf_agents.policies.random_tf_policy import RandomTFPolicy
+from tf_agents.policies.py_tf_eager_policy import PyTFEagerPolicy
 from tf_agents.policies.q_policy import QPolicy
-from tf_agents.replay_buffers import tf_uniform_replay_buffer
-from tf_agents.drivers.dynamic_step_driver import DynamicStepDriver
-from tf_agents.drivers.dynamic_episode_driver import DynamicEpisodeDriver
+from tf_agents.replay_buffers import reverb_replay_buffer, reverb_utils
+from tf_agents.drivers import py_driver
 from tf_agents.metrics import tf_metrics
 from tf_agents.utils import common
+from tf_agents.specs import tensor_spec
 
 # hyper-parameters
 from training.dqn.config import config
@@ -29,6 +31,21 @@ from traffic_gen import datadir_traffic_generator
 def observation_and_action_constraint_splitter(observation):
     return observation["observation"], observation["valid_actions"]
 
+def compute_avg_return(environment, policy, num_episodes=10):
+    total_return = 0.0
+    for _ in range(num_episodes):
+
+        time_step = environment.reset()
+        episode_return = 0.0
+
+        while not time_step.is_last():
+            action_step = policy.action(time_step)
+            time_step = environment.step(action_step.action)
+            episode_return += time_step.reward
+        total_return += episode_return
+
+    avg_return = total_return / num_episodes
+    return avg_return.numpy()[0]
 
 class DQNTrainer(object):
 
@@ -49,7 +66,9 @@ class DQNTrainer(object):
             self.observation_decoder = env.decode_state
 
         # environment
+        self.train_py_env: PyEnvironment = env
         self.train_env: TFEnvironment = TFPyEnvironment(env)
+        self.eval_env: TFEnvironment = TFPyEnvironment(env)
 
         # spec
         self.time_step_spec: TensorSpec = self.train_env.time_step_spec()
@@ -69,12 +88,11 @@ class DQNTrainer(object):
         self.random_policy = self.configure_random_policy()
 
         # replay buffer
-        self.replay_buffer = self.configure_replay_buffer()
-        self.rb_observer = [self.replay_buffer.add_batch]
+        self.replay_buffer, self.rb_observer = self.configure_replay_buffer()
         self.dataset = self.replay_buffer.as_dataset(
+            num_parallel_calls=3,
             sample_batch_size=config.batch_size,
-            num_steps=2, 
-            single_deterministic_pass=False
+            num_steps=2
         )
         self.rb_iter = iter(self.dataset)
 
@@ -87,14 +105,14 @@ class DQNTrainer(object):
         self.train_metrics = [
             tf_metrics.NumberOfEpisodes(),
             tf_metrics.EnvironmentSteps(),
-            tf_metrics.AverageReturnMetric(buffer_size=config.collect_steps_per_epoch),
-            tf_metrics.AverageEpisodeLengthMetric(buffer_size=config.collect_steps_per_epoch),
+            tf_metrics.AverageReturnMetric(buffer_size=config.collect_steps_per_iteration),
+            tf_metrics.AverageEpisodeLengthMetric(buffer_size=config.collect_steps_per_iteration),
         ]
 
         # driver for data collection
         self.initial_driver = self.configure_initial_driver()
         self.collect_driver = self.configure_collect_driver()
-        self.initial_driver.run()
+        self.initial_driver.run(self.train_py_env.reset())
 
         # checkpointer
         self.train_checkpointer = self.configure_checkpointer()
@@ -130,6 +148,7 @@ class DQNTrainer(object):
                 action_spec=self.action_spec,
                 q_network=self.q_net,
                 optimizer=self.optimizer,
+                epsilon_greedy=config.epsilon_greedy,
                 gamma=config.gamma,
                 target_update_tau=config.target_update_tau,
                 target_update_period=config.target_update_period,
@@ -143,6 +162,7 @@ class DQNTrainer(object):
                 action_spec=self.action_spec,
                 q_network=self.q_net,
                 optimizer=self.optimizer,
+                epsilon_greedy=config.epsilon_greedy,
                 gamma=config.gamma,
                 target_update_tau=config.target_update_tau,
                 target_update_period=config.target_update_period,
@@ -167,26 +187,55 @@ class DQNTrainer(object):
         )
 
     def configure_replay_buffer(self):
-        return tf_uniform_replay_buffer.TFUniformReplayBuffer(
+        table_name = 'uniform_table'
+        replay_buffer_signature = tensor_spec.from_spec(self.agent.collect_data_spec)
+        replay_buffer_signature = tensor_spec.add_outer_dim(replay_buffer_signature)
+
+        table = reverb.Table(
+            table_name,
+            max_size=config.replay_buffer_max_length,
+            sampler=reverb.selectors.Uniform(),
+            remover=reverb.selectors.Fifo(),
+            rate_limiter=reverb.rate_limiters.MinSize(1),
+            signature=replay_buffer_signature
+        )
+
+        reverb_server = reverb.Server([table])
+
+        replay_buffer = reverb_replay_buffer.ReverbReplayBuffer(
             self.agent.collect_data_spec,
-            batch_size=config.batch_size,
-            max_length=config.replay_buffer_max_length
+            table_name=table_name,
+            sequence_length=2,
+            local_server=reverb_server
         )
 
-    def configure_initial_driver(self) -> DynamicEpisodeDriver:
-        return DynamicEpisodeDriver(
-            env=self.train_env,
-            policy=self.random_policy,
-            observers=self.rb_observer + self.train_metrics,
-            num_episodes=config.initial_collect_epispode
+        rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
+            replay_buffer.py_client,
+            table_name,
+            sequence_length=2
+        )
+        return replay_buffer, rb_observer
+
+    def configure_initial_driver(self) -> py_driver.PyDriver:
+        return py_driver.PyDriver(
+            env=self.train_py_env,
+            policy=PyTFEagerPolicy(
+                self.random_policy, 
+                use_tf_function=True
+            ),
+            observers=[self.rb_observer],
+            max_steps=config.initial_collect_steps
         )
 
-    def configure_collect_driver(self) -> DynamicStepDriver:
-        return DynamicStepDriver(
-            env=self.train_env,
-            policy=self.policy,
-            observers=self.rb_observer + self.train_metrics,
-            num_steps=config.collect_steps_per_epoch
+    def configure_collect_driver(self) -> py_driver.PyDriver:
+        return py_driver.PyDriver(
+            env=self.train_py_env,
+            policy=PyTFEagerPolicy(
+                self.collect_policy,
+                use_tf_function=True
+            ),
+            observers=[self.rb_observer],
+            max_steps=config.collect_steps_per_iteration
         )
     
     def configure_checkpointer(self) -> common.Checkpointer:
@@ -201,14 +250,14 @@ class DQNTrainer(object):
 
     def fit(self) -> None:
         # reset environment
-        time_step = self.train_env.reset()
+        time_step = self.train_py_env.reset()
         tot_loss = 0
 
         # training loop
         for _ in range(config.num_iterations):
 
             # data collection
-            self.collect_driver.run(time_step)
+            time_step, _ = self.collect_driver.run(time_step)
 
             # Sample a batch of data from the buffer and update the agent's network.
             experience, _ = next(self.rb_iter)
@@ -222,6 +271,8 @@ class DQNTrainer(object):
                 tot_loss = 0
 
             if step % config.valid_interval == 0:
+                # avg_return = compute_avg_return(self.eval_env, self.agent.policy)
+                # print(f'[VALID] Average Reward: {avg_return:.5f}')
                 sim_gen = datadir_traffic_generator(self.intersection, config.valid_data_dir)
                 avg_reward = batch_evaluate_tf(self.configure_eval_policy(), sim_gen, self.max_vehicle_num)
                 print(f"Validation Reward = {avg_reward}")
@@ -229,5 +280,5 @@ class DQNTrainer(object):
             if step % config.ckpt_interval == 0:
                 self.train_checkpointer.save(step)
 
-            for train_metric in self.train_metrics:
-                train_metric.tf_summaries(step_metrics=self.train_metrics[:2])
+            # for train_metric in self.train_metrics:
+            #     train_metric.tf_summaries(step_metrics=self.train_metrics[:2])
