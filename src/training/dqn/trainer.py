@@ -100,6 +100,10 @@ class DQNTrainer(object):
         self.train_checkpointer = self.configure_checkpointer()
         self.train_checkpointer.initialize_or_restore()
 
+        # checkpointer
+        self.train_checkpointer = self.configure_checkpointer()
+        self.train_checkpointer.initialize_or_restore()
+
     def configure_q_network(self) -> QNetwork:
         return QNetwork(
             input_tensor_spec=self.observation_spec["observation"],
@@ -180,7 +184,7 @@ class DQNTrainer(object):
     def configure_collect_driver(self) -> DynamicStepDriver:
         return DynamicStepDriver(
             env=self.train_env,
-            policy=self.collect_policy,
+            policy=self.policy,
             observers=self.rb_observer + self.train_metrics,
             num_steps=config.collect_steps_per_epoch
         )
@@ -221,6 +225,9 @@ class DQNTrainer(object):
                 sim_gen = datadir_traffic_generator(self.intersection, config.valid_data_dir)
                 avg_reward = batch_evaluate_tf(self.configure_eval_policy(), sim_gen, self.max_vehicle_num)
                 print(f"Validation Reward = {avg_reward}")
+
+            if step % config.ckpt_interval == 0:
+                self.train_checkpointer.save(step)
 
             if step % config.ckpt_interval == 0:
                 self.train_checkpointer.save(step)
