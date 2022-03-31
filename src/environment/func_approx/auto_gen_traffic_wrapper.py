@@ -48,6 +48,8 @@ class AutoGenTrafficWrapperEnv(py_environment.PyEnvironment):
 
     def _step(self, action):
         time_step = self.current_env._step(action)
+        if time_step.is_last():
+            self._reset()
         return time_step
 
     def get_new_env(self):
@@ -57,7 +59,9 @@ class AutoGenTrafficWrapperEnv(py_environment.PyEnvironment):
         new_sim = next(self.traffic_generator)
         time_step = self.origin_env._reset(new_sim=new_sim)
         while not time_step.is_last():
-            action = random.randint(0, self.origin_env.max_vehicle_num)
+            valid_action_mask = self.origin_env.get_valid_action_mask(time_step.observation["observation"])
+            valid_actions = [a for a, valid in enumerate(valid_action_mask) if valid]
+            action = random.choice(valid_actions)
             time_step = self.origin_env._step(action)
 
         for _, env in self.origin_env.get_snapshots():
