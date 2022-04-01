@@ -86,14 +86,14 @@ class MinimumEnv(py_environment.PyEnvironment):
             if position >= 0:
                 occupied_cz.add(trajectory[position])
             elif state:
-                waiting_src_lane.add(tuple(trajectory))
+                waiting_src_lane.add(trajectory[0])
         
         someone_waiting = False
         for i, (trajectory, position, state) in enumerate(vehicles):
             if state:
                 action_mask[i + 1] = True
                 someone_waiting = True
-            if not state and not (position == -1 and tuple(trajectory) in waiting_src_lane):
+            if not state and not (position == -1 and trajectory[0] in waiting_src_lane):
                 if position != len(trajectory) - 1:
                     next_cz = trajectory[position + 1]
                     if next_cz not in occupied_cz:
