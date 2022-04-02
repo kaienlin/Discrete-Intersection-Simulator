@@ -125,11 +125,11 @@ def main(
     pbar = tqdm()
     for sim in sim_gen:
         env.reset(new_sim=sim)
-        #optimum = solve_by_CP(sim)
-        #cost[-1].append(optimum)
+        optimum = solve_by_CP(sim)
+        cost[-1].append(optimum)
         for i, (pi_name, pi) in enumerate(policies):
             c, deadlock = evaluate(pi, env)
-            print(pi_name, c)
+            #print(pi_name, c)
             # if round(c, 2) < round(optimum, 2):
             #    print(c, optimum)
             if deadlock:
@@ -140,7 +140,7 @@ def main(
 
         pbar.update(1)
 
-    #policies.append(("Optimal", ""))
+    policies.append(("Optimal", ""))
     print("=== Average ===")
     for i, (pi_name, _) in enumerate(policies):
         print(
