@@ -8,14 +8,14 @@ import numpy as np
 import fire
 
 from environment.tabular import position_based, vehicle_based
-from environment.func_approx import MinimumEnv
+#from environment.func_approx import MinimumEnv
 from simulation import Simulator, Intersection
 from utility import read_intersection_from_json
-from CP import solve_by_CP
+#from CP import solve_by_CP
 import traffic_gen
 import policy
 
-from tf_agents.environments.tf_py_environment import TFPyEnvironment
+#from tf_agents.environments.tf_py_environment import TFPyEnvironment
 
 
 def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_based.SimulatorEnv]):
@@ -35,7 +35,7 @@ def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_b
         state, cost, done, _ = env.step(action)
         waiting_time_sum += (discount_factor ** i) * cost
         i += 1
-    return waiting_time_sum / 10 / len(env.sim.vehicles), waiting_time_sum >= env.DEADLOCK_COST
+    return waiting_time_sum / 10 / len(env.sim.vehicles), waiting_time_sum >= env.deadlock_cost
 
 
 def batch_evaluate(
@@ -120,19 +120,19 @@ def main(
     # Modify this list to compare different policies
     policies = [
         ("iGreedy", policy.IGreedyPolicy(env)),
-        ("Q-learning", policy.QTablePolicy(env, np.load(checkpoint_path / "Q.npy"))),
+        #("Q-learning", policy.QTablePolicy(env, np.load(checkpoint_path / "Q.npy"))),
     ]
 
     cost = [[] for _ in policies]
-    cost.append([])
+    #cost.append([])
     deadlock_cnt = [0 for _ in policies]
-    deadlock_cnt.append(0)
+    #deadlock_cnt.append(0)
     pbar = tqdm()
     for sim in sim_gen:
         env.reset(new_sim=sim)
-        optimum = solve_by_CP(sim)
-        cost[-1].append(optimum)
-
+        #optimum = solve_by_CP(sim)
+        #cost[-1].append(optimum)
+        sim.disturbance_prob = 0.01
         for i, (pi_name, pi) in enumerate(policies):
             c, deadlock = evaluate(pi, env)
             #print(pi_name, c)
@@ -146,7 +146,7 @@ def main(
 
         pbar.update(1)
 
-    policies.append(("Optimal", ""))
+    #policies.append(("Optimal", ""))
     print("=== Average ===")
     for i, (pi_name, _) in enumerate(policies):
         print(

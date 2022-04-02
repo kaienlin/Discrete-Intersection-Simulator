@@ -1,11 +1,14 @@
+from ctypes import Union
 from .tcg import TimingConflictGraph, Vertex, Edge, VertexState, EdgeType
 from .intersection import Intersection
 from .vehicle import Vehicle, VehicleState
 
-from typing import Iterable, Tuple, List, Dict
+from typing import Iterable, Optional, Tuple, List, Dict
 import heapq
 import enum
 import json
+import random
+
 
 class EventType(enum.Enum):
     END_MOVING = enum.auto()
@@ -50,6 +53,7 @@ class Simulator:
     def __init__(
         self,
         intersection: Intersection,
+        disturbance_prob: Optional[float] = None,
     ):
         self.__intersection: Intersection = intersection
         
@@ -59,6 +63,8 @@ class Simulator:
         self.__TCG: TimingConflictGraph = TimingConflictGraph(set(self.__vehicles.values()), self.__intersection)
         self.__event_queue = VertexEventQueue()
         self.__prev_moved = False
+
+        self.disturbance_prob: Union[None, float] = disturbance_prob
 
     def add_vehicle(
         self,
@@ -311,18 +317,8 @@ class Simulator:
                and not self.__ready_condition(child):
                 child.vehicle.set_state(VehicleState.BLOCKED)
 
-    def simulation_step_act(self, allowed_veh_id: str) -> None:
-        if allowed_veh_id == "":
-            self.__prev_moved = False
-            return
-
-        if allowed_veh_id not in self.__vehicles \
-           or self.__vehicles[allowed_veh_id].state != VehicleState.WAITING:
-            self.__prev_moved = False
-            return
-
-        self.__prev_moved = True
-        vehicle = self.__vehicles[allowed_veh_id]
+    def __move_vehicle(self, veh_id: str) -> None:
+        vehicle = self.__vehicles[veh_id]
 
         next_cz = vehicle.get_next_cz()
         next_vertex = None
@@ -347,3 +343,26 @@ class Simulator:
         self.__event_queue.push(next_vertex.entering_time + next_vertex.get_consumed_time(), EventType.END_MOVING, next_vertex)
         self.__TCG.start_execute(next_vertex)
         self.__block_cz(next_vertex)
+
+    def simulation_step_act(self, allowed_veh_id: str) -> None:
+        if allowed_veh_id == "":
+            self.__prev_moved = False
+            return
+
+        if allowed_veh_id not in self.__vehicles \
+           or self.__vehicles[allowed_veh_id].state != VehicleState.WAITING:
+            self.__prev_moved = False
+            return
+
+        self.__prev_moved = True
+        
+        vehicle_moved = {veh_id: False for veh_id in self.__vehicles.keys()}
+        vehicle_moved[allowed_veh_id] = True
+        if self.disturbance_prob is not None:
+            for veh_id in vehicle_moved:
+                if random.uniform(0, 1) < self.disturbance_prob:
+                    vehicle_moved[veh_id] = True
+
+        for veh_id, is_moved in vehicle_moved.items():
+            if is_moved:
+                self.__move_vehicle(veh_id)
