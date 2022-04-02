@@ -187,6 +187,7 @@ def Q_learning(
 
             if eval_data_dir is not None:
                 performance = evaluate(env, Q)
+                print(f"validation: {performance}")
                 if performance < best_performance:
                     save_Q_table(Q, best_Q_table_path)
                     best_performance = performance

@@ -23,7 +23,7 @@ def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_b
     return the average waiting time of vehicles in seconds
     '''
     if len(env.sim.vehicles) == 0:
-        return 0
+        return 0, False
 
     done = False
     state = env.reset()
@@ -35,7 +35,7 @@ def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_b
         state, cost, done, _ = env.step(action)
         waiting_time_sum += (discount_factor ** i) * cost
         i += 1
-    return waiting_time_sum / 10 / len(env.sim.vehicles), waiting_time_sum >= env.DEADLOCK_COST
+    return waiting_time_sum / 10 / len(env.sim.vehicles), waiting_time_sum >= env.deadlock_cost
 
 
 def batch_evaluate(
@@ -106,14 +106,9 @@ def main(
     sim_gen: Iterable[Simulator] = traffic_gen.datadir_traffic_generator(
         intersection, traffic_data_dir)
 
-    checkpoint_path = Path("checkpoints/reduced-2x2-8v-1q/")
+    checkpoint_path = Path("checkpoints/Q_tabular_stream_2x2/")
     env = vehicle_based.SimulatorEnv(Simulator(intersection))
-
-    with open(checkpoint_path / "env.p", "rb") as f:
-        _env = pickle.load(f)
-        env.encoding_table = _env.encoding_table
-        env.decoding_table = _env.decoding_table
-        del _env
+    env.load_enc_dec_tables(checkpoint_path / "enc_dec_table.p")
     
     env.reset(new_sim=Simulator(intersection))
 
@@ -132,7 +127,6 @@ def main(
         env.reset(new_sim=sim)
         optimum = solve_by_CP(sim)
         cost[-1].append(optimum)
-
         for i, (pi_name, pi) in enumerate(policies):
             c, deadlock = evaluate(pi, env)
             #print(pi_name, c)

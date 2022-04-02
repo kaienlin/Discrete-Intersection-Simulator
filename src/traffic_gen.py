@@ -1,5 +1,5 @@
 import random
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 from pathlib import Path
 import fire
 
@@ -50,14 +50,15 @@ def random_traffic_generator(
     num_iter: int = 10000,
     max_vehicle_num: int = 8,
     poisson_parameter_list = [0.5],
-    mode: str = "stream"
+    mode: str = "stream",
+    disturbance_prob: Optional[float] = None
 ):
     cond = lambda _: True
     if num_iter > 0:
         cond = lambda i: i < num_iter
     i = 0
     while cond(i):
-        sim = Simulator(intersection)
+        sim = Simulator(intersection, disturbance_prob=disturbance_prob)
         if mode == "stream":
             add_random_traffic(sim, max_vehicle_num=max_vehicle_num, max_time=300,
                                 p=random.choice(poisson_parameter_list) / 10)
@@ -69,13 +70,13 @@ def random_traffic_generator(
         i += 1
         yield sim
 
-def datadir_traffic_generator(intersection: Intersection, data_dir):
+def datadir_traffic_generator(intersection: Intersection, data_dir, disturbance_prob: Optional[float] = None):
     data_dir = Path(data_dir)
     if not data_dir.exists() or not data_dir.is_dir():
         raise Exception("data_dir is not a directory")
 
     for traffic_file in data_dir.iterdir():
-        sim = Simulator(intersection)
+        sim = Simulator(intersection, disturbance_prob=disturbance_prob)
         sim.load_traffic(traffic_file)
         yield sim
 
