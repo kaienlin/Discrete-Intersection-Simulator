@@ -50,7 +50,7 @@ def batch_evaluate(
     for sim in sim_gen:
         env.reset(new_sim=sim)
         c = evaluate(P, env)
-        c_list.append(c)
+        c_list.append(c[0])
     return sum(c_list) / len(c_list)
 
 
