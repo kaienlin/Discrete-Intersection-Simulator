@@ -1,9 +1,8 @@
-from ctypes import Union
 from .tcg import TimingConflictGraph, Vertex, Edge, VertexState, EdgeType
 from .intersection import Intersection
 from .vehicle import Vehicle, VehicleState
 
-from typing import Iterable, Optional, Tuple, List, Dict
+from typing import Iterable, Optional, Tuple, List, Dict, Union
 import heapq
 import enum
 import json

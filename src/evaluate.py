@@ -8,14 +8,14 @@ import numpy as np
 import fire
 
 from environment.tabular import position_based, vehicle_based
-#from environment.func_approx import MinimumEnv
+from environment.func_approx import MinimumEnv
 from simulation import Simulator, Intersection
 from utility import read_intersection_from_json
-#from CP import solve_by_CP
+from CP import solve_by_CP
 import traffic_gen
 import policy
 
-#from tf_agents.environments.tf_py_environment import TFPyEnvironment
+from tf_agents.environments.tf_py_environment import TFPyEnvironment
 
 
 def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_based.SimulatorEnv]):
@@ -23,7 +23,7 @@ def evaluate(P: policy.Policy, env: Union[position_based.SimulatorEnv, vehicle_b
     return the average waiting time of vehicles in seconds
     '''
     if len(env.sim.vehicles) == 0:
-        return 0
+        return 0, False
 
     done = False
     state = env.reset()
@@ -106,27 +106,22 @@ def main(
     sim_gen: Iterable[Simulator] = traffic_gen.datadir_traffic_generator(
         intersection, traffic_data_dir)
 
-    checkpoint_path = Path("checkpoints/reduced-2x2-8v-1q/")
+    checkpoint_path = Path("checkpoints/Q_tabular_stream_2x2/")
     env = vehicle_based.SimulatorEnv(Simulator(intersection))
-
-    with open(checkpoint_path / "env.p", "rb") as f:
-        _env = pickle.load(f)
-        env.encoding_table = _env.encoding_table
-        env.decoding_table = _env.decoding_table
-        del _env
+    env.load_enc_dec_tables(checkpoint_path / "enc_dec_table.p")
     
     env.reset(new_sim=Simulator(intersection))
 
     # Modify this list to compare different policies
     policies = [
         ("iGreedy", policy.IGreedyPolicy(env)),
-        #("Q-learning", policy.QTablePolicy(env, np.load(checkpoint_path / "Q.npy"))),
+        ("Q-learning", policy.QTablePolicy(env, np.load(checkpoint_path / "Q.npy"))),
     ]
 
     cost = [[] for _ in policies]
-    #cost.append([])
+    cost.append([])
     deadlock_cnt = [0 for _ in policies]
-    #deadlock_cnt.append(0)
+    deadlock_cnt.append(0)
     pbar = tqdm()
     for sim in sim_gen:
         env.reset(new_sim=sim)
@@ -146,7 +141,7 @@ def main(
 
         pbar.update(1)
 
-    #policies.append(("Optimal", ""))
+    policies.append(("Optimal", ""))
     print("=== Average ===")
     for i, (pi_name, _) in enumerate(policies):
         print(
