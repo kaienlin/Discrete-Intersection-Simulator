@@ -12,9 +12,10 @@ class SimulatorEnv(VehicleBasedStateEnv):
         self,
         sim: Simulator,
         max_vehicle_num: int = 8,
-        max_vehicle_num_per_src_lane: int = 1
+        max_vehicle_num_per_src_lane: int = 1,
+        deadlock_cost: int = int(1e9)
     ):
-        super().__init__(sim.intersection, max_vehicle_num)
+        super().__init__(sim.intersection, max_vehicle_num, deadlock_cost=deadlock_cost)
         self.max_vehicle_num_per_src_lane: int = max_vehicle_num_per_src_lane
         
         self.raw_state_env: RawStateSimulatorEnv = RawStateSimulatorEnv(sim, self.deadlock_cost)

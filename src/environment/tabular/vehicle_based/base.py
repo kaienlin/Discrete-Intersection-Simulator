@@ -10,17 +10,18 @@ from simulation.intersection import Intersection
 
 
 class VehicleBasedStateEnv:
-    deadlock_cost = int(1e9)
     vehicle_state_values: Tuple[str] = ("waiting", "non-waiting")
 
     def __init__(
         self,
         intersection: Intersection,
         max_vehicle_num: int,
+        deadlock_cost: int = int(1e9)
     ):
         super().__init__()
         self.intersection: Intersection = intersection
         self.max_vehicle_num: int = max_vehicle_num
+        self.deadlock_cost: int = deadlock_cost
 
         self.encoding_table: Dict[Tuple[VehicleBasedStateEnv.VehicleState], int] = {}
         self.decoding_table: List[Tuple[VehicleBasedStateEnv.VehicleState]] = []

@@ -136,7 +136,8 @@ def Q_learning(
     alpha: float = 0.01,
     gamma: float = 0.99,
     epsilon: float = 0.1,
-    traj_file_list: List[str] = []
+    traj_file_list: List[str] = [],
+    deadlock_cost: int = int(1e9)
 ):
     # create simulator and environment
     sim = next(simulator_generator)
@@ -148,7 +149,8 @@ def Q_learning(
     best_Q_table_path: Path = checkpoint_path / "Q.best.npy"
 
     env = environment.tabular.vehicle_based.SimulatorEnv(sim, 
-            max_vehicle_num=max_vehicle_num, max_vehicle_num_per_src_lane=max_vehicle_num_per_src_lane)
+            max_vehicle_num=max_vehicle_num, max_vehicle_num_per_src_lane=max_vehicle_num_per_src_lane,
+            deadlock_cost=deadlock_cost)
 
     if enc_dec_table_path.is_file():
         env.load_enc_dec_tables(enc_dec_table_path)
@@ -251,7 +253,8 @@ def exploration_only(
     epsilon: float = 0.1,
     epoch_per_traffic: int = 10,
     epoch_per_checkpoint: int = 10000,
-    trajectories_record_file: Optional[Path] = None
+    trajectories_record_file: Optional[Path] = None,
+    deadlock_cost: int = int(1e9)
 ):
     # create simulator and environment
     sim = next(simulator_generator)
@@ -260,7 +263,8 @@ def exploration_only(
     Q_table_path: Path = checkpoint_path / "Q.npy"
 
     env = environment.tabular.vehicle_based.SimulatorEnv(sim, 
-            max_vehicle_num=max_vehicle_num, max_vehicle_num_per_src_lane=max_vehicle_num_per_src_lane)
+            max_vehicle_num=max_vehicle_num, max_vehicle_num_per_src_lane=max_vehicle_num_per_src_lane,
+            deadlock_cost=deadlock_cost)
 
     if enc_dec_table_path.is_file():
         env.load_enc_dec_tables(enc_dec_table_path)

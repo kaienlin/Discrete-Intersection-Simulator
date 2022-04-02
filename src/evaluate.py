@@ -1,4 +1,4 @@
-from typing import Iterable, Union
+from typing import Iterable, Union, Optional
 from pathlib import Path
 import random
 import pickle
@@ -97,6 +97,7 @@ def main(
     intersection_file_path: str,
     traffic_data_dir: str,
     seed: int = 0,
+    disturbance_prob: Optional[float] = None
 ):
     random.seed(seed)
     np.random.seed(seed)
@@ -104,7 +105,7 @@ def main(
     intersection: Intersection = read_intersection_from_json(
         intersection_file_path)
     sim_gen: Iterable[Simulator] = traffic_gen.datadir_traffic_generator(
-        intersection, traffic_data_dir)
+        intersection, traffic_data_dir, disturbance_prob=disturbance_prob)
 
     checkpoint_path = Path("checkpoints/Q_tabular_stream_2x2/")
     env = vehicle_based.SimulatorEnv(Simulator(intersection))
