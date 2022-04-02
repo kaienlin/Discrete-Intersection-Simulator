@@ -344,19 +344,15 @@ class Simulator:
         self.__block_cz(next_vertex)
 
     def simulation_step_act(self, allowed_veh_id: str) -> None:
-        if allowed_veh_id == "":
-            self.__prev_moved = False
-            return
-
-        if allowed_veh_id not in self.__vehicles \
+        if allowed_veh_id == "" or allowed_veh_id not in self.__vehicles \
            or self.__vehicles[allowed_veh_id].state != VehicleState.WAITING:
             self.__prev_moved = False
-            return
-
-        self.__prev_moved = True
+        else:
+            self.__prev_moved = True
         
         vehicle_moved = {veh_id: False for veh_id in self.__vehicles.keys()}
-        vehicle_moved[allowed_veh_id] = True
+        if self.__prev_moved:
+            vehicle_moved[allowed_veh_id] = True
         if self.disturbance_prob is not None:
             for veh_id in vehicle_moved:
                 if random.uniform(0, 1) < self.disturbance_prob:
