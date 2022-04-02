@@ -363,5 +363,5 @@ class Simulator:
                     vehicle_moved[veh_id] = True
 
         for veh_id, is_moved in vehicle_moved.items():
-            if is_moved:
+            if is_moved and self.__vehicles[veh_id].state == VehicleState.WAITING:
                 self.__move_vehicle(veh_id)

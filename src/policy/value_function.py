@@ -6,6 +6,23 @@ from .base import Policy
 from .greedy import IGreedyPolicy
 
 
+def worth_waiting(vehicles):
+    occupied_cz = set()
+    for vehicle in vehicles:
+        if vehicle.position >= 0:
+            occupied_cz.add(vehicle.trajectory[vehicle.position])
+
+    for vehicle in vehicles:
+        if vehicle.state == "non-waiting":
+            if vehicle.position != len(vehicle.trajectory) - 1:
+                next_cz = vehicle.trajectory[vehicle.position + 1]
+                if next_cz not in occupied_cz:
+                    return True
+            else:
+                return True
+    return False
+
+
 class QTablePolicy(Policy):
     def __init__(self, env, Q):
         self.env = env
@@ -15,7 +32,7 @@ class QTablePolicy(Policy):
         self.prev_state: int = -1
         self.prev_action: int = -1
         self.waiting_counter: int = 0
-        self.max_waiting = 100
+        self.max_waiting = 30
 
         self.igreedy = IGreedyPolicy(self.env)
 
@@ -29,6 +46,9 @@ class QTablePolicy(Policy):
 
         G = Digraph()
         decoded_state = self.env.decode_state(state)
+        if len(decoded_state) == 0:
+            return 0
+
         for vehicle_state in decoded_state:
             if 0 <= vehicle_state.position <= len(vehicle_state.trajectory) - 2:
                 cur_cz = vehicle_state.trajectory[vehicle_state.position]
@@ -52,6 +72,9 @@ class QTablePolicy(Policy):
                 G.add_edge(vehicle_state.trajectory[vehicle_state.position], cz1)
             if cyclic:
                 effective_actions.remove(action)
+
+        if 0 in effective_actions and not worth_waiting(decoded_state):
+            effective_actions.remove(0)
 
         action = effective_actions[Q_state[effective_actions].argmin()]
 
