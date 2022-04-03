@@ -73,7 +73,7 @@ class QTablePolicy(Policy):
             if cyclic:
                 effective_actions.remove(action)
 
-        if 0 in effective_actions and not worth_waiting(decoded_state):
+        if 0 in effective_actions and len(effective_actions) > 1 and not worth_waiting(decoded_state):
             effective_actions.remove(0)
 
         action = effective_actions[Q_state[effective_actions].argmin()]
