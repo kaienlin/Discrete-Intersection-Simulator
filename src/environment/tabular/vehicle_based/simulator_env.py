@@ -55,12 +55,12 @@ class SimulatorEnv(VehicleBasedStateEnv):
             else:
                 assert False
 
-        _, delayed_time, terminal, _ = self.raw_state_env.step(raw_action)
+        _, delayed_time, terminal, info = self.raw_state_env.step(raw_action)
 
         cur_vehicles: Iterable[Vehicle] = self.raw_state_env.history[-1][1]
         next_state, self.prev_included_vehicles = self._encode_state_from_vehicles(cur_vehicles)
 
-        return next_state, delayed_time, terminal, {}
+        return next_state, delayed_time, terminal, info
 
     def get_snapshots(self):
         res = []
