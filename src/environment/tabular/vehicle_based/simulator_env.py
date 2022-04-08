@@ -81,7 +81,8 @@ class SimulatorEnv(VehicleBasedStateEnv):
             env_snapshot = type(self)(
                 sim,
                 max_vehicle_num=self.max_vehicle_num,
-                max_vehicle_num_per_src_lane=self.max_vehicle_num_per_src_lane
+                max_vehicle_num_per_src_lane=self.max_vehicle_num_per_src_lane,
+                deadlock_cost=self.deadlock_cost
             )
 
             env_snapshot.prev_included_vehicles = deepcopy(vehicles_0)
