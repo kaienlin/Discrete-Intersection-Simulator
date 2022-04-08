@@ -72,10 +72,12 @@ class RawStateSimulatorEnv:
         delayed_time: int = (cur_timestamp - prev_timestamp) * len(prev_idle_ids)
 
         terminal = self.sim.status != "RUNNING"
+        deadlock = False
         if terminal and self.sim.status == "DEADLOCK":
+            deadlock = True
             delayed_time += self.deadlock_cost
 
-        return deepcopy(cur_vehicles), delayed_time, terminal, {}
+        return deepcopy(cur_vehicles), delayed_time, terminal, {"deadlock": deadlock}
 
     @staticmethod
     def is_idle_state(vehicle_state: VehicleState) -> bool:
