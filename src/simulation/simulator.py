@@ -2,7 +2,7 @@ from .tcg import TimingConflictGraph, Vertex, Edge, VertexState, EdgeType
 from .intersection import Intersection
 from .vehicle import Vehicle, VehicleState
 
-from typing import Iterable, Optional, Tuple, List, Dict, Union
+from typing import Iterable, Optional, Tuple, List, Dict, Union, Set
 import heapq
 import enum
 import json
@@ -64,6 +64,7 @@ class Simulator:
         self.__prev_moved = False
 
         self.disturbance_prob: Union[None, float] = disturbance_prob
+        self.just_start_waiting: Set[str] = set()
 
     def add_vehicle(
         self,
@@ -250,6 +251,7 @@ class Simulator:
         self.__timestamp = -1
         self.__event_queue.clear()
         self.__TCG.reset_vertices_state()
+        self.just_start_waiting = set()
         for veh in self.__vehicles.values():
             veh.reset()
 
@@ -278,6 +280,7 @@ class Simulator:
             elif ev.type == EventType.START_WAITING:
                 if self.__not_blocked(ev.vertex):
                     ev.vertex.vehicle.set_state(VehicleState.WAITING)
+                    self.just_start_waiting.add(ev.vertex.vehicle.id)
 
     def simulation_step_report(self) -> Tuple[int, Iterable[Vehicle]]:
         if any([veh.state == VehicleState.WAITING for veh in self.__vehicles.values()]):
@@ -355,9 +358,15 @@ class Simulator:
             vehicle_moved[allowed_veh_id] = True
         if self.disturbance_prob is not None:
             for veh_id in vehicle_moved:
+                if veh_id not in self.just_start_waiting:
+                    continue
+                self.just_start_waiting.remove(veh_id)
                 if random.uniform(0, 1) < self.disturbance_prob:
                     vehicle_moved[veh_id] = True
-
+        
+        num_moved = 0
         for veh_id, is_moved in vehicle_moved.items():
             if is_moved and self.__vehicles[veh_id].state == VehicleState.WAITING:
                 self.__move_vehicle(veh_id)
+                num_moved += 1
+        return num_moved

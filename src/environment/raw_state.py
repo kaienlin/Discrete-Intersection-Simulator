@@ -56,7 +56,7 @@ class RawStateSimulatorEnv:
             raise Exception(f"[RawStateSimulatorEnv] Invalid action {action}")
 
         acted_vehicle_id: str = "" if action == 0 else prev_vehicles[action-1].id
-        self.sim.simulation_step_act(acted_vehicle_id)
+        num_moved = self.sim.simulation_step_act(acted_vehicle_id)
 
         cur_timestamp, cur_vehicles = self.sim.simulation_step_report()
         self.history[-1][2] = acted_vehicle_id
@@ -69,7 +69,7 @@ class RawStateSimulatorEnv:
                             if self.is_idle_state(vehicle.state)}
         if acted_vehicle_id != "":
             prev_idle_ids.remove(acted_vehicle_id)
-        delayed_time: int = (cur_timestamp - prev_timestamp) * len(prev_idle_ids)
+        delayed_time: int = (cur_timestamp - prev_timestamp) * len(prev_idle_ids) - num_moved
 
         terminal = self.sim.status != "RUNNING"
         deadlock = False
