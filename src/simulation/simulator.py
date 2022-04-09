@@ -287,7 +287,7 @@ class Simulator:
             if not self.__prev_moved:
                 self.__timestamp += 1
             else:
-                self.__prev_moved = True
+                self.__prev_moved = False
         elif not self.__event_queue.empty():
             self.__timestamp = self.__timestamp + 1
         else:
