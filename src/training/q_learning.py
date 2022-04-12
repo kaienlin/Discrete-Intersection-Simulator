@@ -15,6 +15,7 @@ from simulation import Simulator, Intersection
 from utility import read_intersection_from_json, DynamicQtable, FileLock
 from evaluate import batch_evaluate
 from policy import QTablePolicy
+from scripts.calc_state_space import construct_state_space
 import traffic_gen
 import environment
 
@@ -154,6 +155,17 @@ def Q_learning(
 
     if enc_dec_table_path.is_file():
         env.load_enc_dec_tables(enc_dec_table_path)
+    else:
+        print("enc_dec_table.p not found, constructing the state space...")
+        env.decoding_table = construct_state_space(
+            sim.intersection,
+            max_vehicle_num=max_vehicle_num,
+            max_queue_length=max_vehicle_num_per_src_lane,
+            reduced=False
+        )
+        env.encoding_table = {s: i for i, s in enumerate(env.decoding_table)}
+        env.save_enc_dec_tables(enc_dec_table_path)
+        print(f"state space constructed: size = {len(env.decoding_table)}")
 
     Q = load_Q_table(env, Q_table_path)
     seen_state = defaultdict(int)
