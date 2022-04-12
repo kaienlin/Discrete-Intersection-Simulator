@@ -67,9 +67,8 @@ class RawStateSimulatorEnv:
         # the previous times step to the current time step
         prev_idle_ids: Set = {vehicle.id for vehicle in prev_vehicles
                             if self.is_idle_state(vehicle.state)}
-        if acted_vehicle_id != "":
-            prev_idle_ids.remove(acted_vehicle_id)
-        delayed_time: int = (cur_timestamp - prev_timestamp) * len(prev_idle_ids) - num_moved
+
+        delayed_time: int = (cur_timestamp - prev_timestamp) * (len(prev_idle_ids) - num_moved)
 
         terminal = self.sim.status != "RUNNING"
         deadlock = False
