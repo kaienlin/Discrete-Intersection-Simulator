@@ -1,5 +1,6 @@
 from typing import Dict, Set, Union, Tuple, Iterable
 import itertools
+import random
 
 from utility import Digraph
 from simulation import Vehicle, VehicleState
@@ -71,7 +72,10 @@ class IGreedyPolicy(Policy):
                 next_cz = vehicle_state.trajectory[vehicle_state.position + 1]
                 G.add_edge(cur_cz, next_cz)
 
-        for i, vehicle_state in enumerate(decoded_state):
+        indices = list(range(len(decoded_state)))
+        random.shuffle(indices)
+        for i in indices:
+            vehicle_state = decoded_state[i]
             if vehicle_state.state == "waiting":
                 if vehicle_state.position >= len(vehicle_state.trajectory) - 2:
                     return i + 1
