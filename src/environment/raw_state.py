@@ -52,7 +52,7 @@ class RawStateSimulatorEnv:
         prev_timestamp, prev_vehicles, _ = self.history[-1]
 
         if action < 0 or action > len(prev_vehicles) \
-            or (action > 0 and prev_vehicles[action-1].state != VehicleState.WAITING):
+            or (action > 0 and prev_vehicles[action-1].state != VehicleState.READY):
             raise Exception(f"[RawStateSimulatorEnv] Invalid action {action}")
 
         acted_vehicle_id: str = "" if action == 0 else prev_vehicles[action-1].id
@@ -80,4 +80,4 @@ class RawStateSimulatorEnv:
 
     @staticmethod
     def is_idle_state(vehicle_state: VehicleState) -> bool:
-        return vehicle_state in (VehicleState.BLOCKED, VehicleState.WAITING)
+        return vehicle_state in (VehicleState.BLOCKED, VehicleState.READY)

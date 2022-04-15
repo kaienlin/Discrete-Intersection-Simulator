@@ -104,15 +104,15 @@ class SimulatorEnv(VehicleBasedStateEnv):
         def vehicle_priority_func(vehicle: Vehicle) -> int:
             if 0 <= vehicle.idx_on_traj <= len(vehicle.trajectory) - 1:
                 return -1
-            if vehicle.state == VehicleState.WAITING:
+            if vehicle.state == VehicleState.READY:
                 return -1
             if vehicle.idx_on_traj == -1 \
-                and vehicle.state in [VehicleState.WAITING, VehicleState.BLOCKED]:
+                and vehicle.state in [VehicleState.READY, VehicleState.BLOCKED]:
                 num_pred_vehicles = 0
                 for other in vehicles:
                     if other.src_lane_id == vehicle.src_lane_id \
                         and other.idx_on_traj == -1 \
-                        and other.state in [VehicleState.WAITING, VehicleState.BLOCKED] \
+                        and other.state in [VehicleState.READY, VehicleState.BLOCKED] \
                         and other.earliest_arrival_time < vehicle.earliest_arrival_time:
                         num_pred_vehicles += 1
                 return num_pred_vehicles
@@ -139,7 +139,7 @@ class SimulatorEnv(VehicleBasedStateEnv):
                 src_lane="",
                 trajectory=vehicle.trajectory[max(0, vehicle.idx_on_traj):],
                 position=min(0, vehicle.idx_on_traj),
-                state="waiting" if vehicle.state == VehicleState.WAITING else "non-waiting"
+                state="waiting" if vehicle.state == VehicleState.READY else "non-waiting"
             ))
         res = tuple(res)
         indices = sorted(list(range(len(res))), key=lambda i: res[i])

@@ -5,7 +5,7 @@ from typing import Dict, Tuple, Set
 
 class VehicleState(enum.Enum):
     NOT_ARRIVED = enum.auto()
-    WAITING = enum.auto()
+    READY = enum.auto()
     MOVING = enum.auto()
     BLOCKED = enum.auto()
     LEFT = enum.auto()
@@ -32,14 +32,14 @@ class Vehicle:
         self.__state: VehicleState = VehicleState.NOT_ARRIVED
         self.__idx_on_traj: int = -1
         self.valid_transitions: Set[Tuple[VehicleState, VehicleState]] = {
-            (VehicleState.NOT_ARRIVED, VehicleState.WAITING),
+            (VehicleState.NOT_ARRIVED, VehicleState.READY),
             (VehicleState.NOT_ARRIVED, VehicleState.BLOCKED),
-            (VehicleState.WAITING, VehicleState.MOVING),
-            (VehicleState.WAITING, VehicleState.BLOCKED),
-            (VehicleState.MOVING, VehicleState.WAITING),
+            (VehicleState.READY, VehicleState.MOVING),
+            (VehicleState.READY, VehicleState.BLOCKED),
+            (VehicleState.MOVING, VehicleState.READY),
             (VehicleState.MOVING, VehicleState.BLOCKED),
-            (VehicleState.BLOCKED, VehicleState.WAITING),
-            (VehicleState.WAITING, VehicleState.LEFT),
+            (VehicleState.BLOCKED, VehicleState.READY),
+            (VehicleState.READY, VehicleState.LEFT),
             (VehicleState.MOVING, VehicleState.LEFT)
         }
 
@@ -51,7 +51,7 @@ class Vehicle:
         return self.__idx_on_traj == len(self.trajectory) - 1
 
     def move_to_next_cz(self) -> None:
-        if self.__state != VehicleState.WAITING:
+        if self.__state != VehicleState.READY:
             raise Exception("[Vehicle.move_to_next_CZ] invalid vehicle state")
         self.__idx_on_traj += 1
 
