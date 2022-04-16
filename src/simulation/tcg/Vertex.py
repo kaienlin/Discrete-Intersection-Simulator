@@ -50,4 +50,3 @@ class Vertex:
 
     def __eq__(self, other) -> bool:
         return self.id == other.id
-

@@ -1,4 +1,3 @@
-from base64 import decode
 from typing import Optional
 import enum
 

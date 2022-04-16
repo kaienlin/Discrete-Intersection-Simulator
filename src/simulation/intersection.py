@@ -5,11 +5,11 @@ class Intersection:
     def __init__(self) -> None:
         self.__conflict_zones: Set[str] = set()
         self.__transitions: Set[Tuple[str, str]] = set()
-        self.__adjacency_list: Dict[str, Set[str]] = dict()
+        self.__adjacency_list: Dict[str, Set[str]] = {}
         self.__trajectories: Set[Tuple[str]] = set()
-        self.__src_lanes: Dict[str, Set[str]] = dict()
-        self.__dst_lanes: Dict[str, Set[str]] = dict()
-        self.__cz_coordinates: Dict[str, Tuple[float, float]] = dict()
+        self.__src_lanes: Dict[str, Set[str]] = {}
+        self.__dst_lanes: Dict[str, Set[str]] = {}
+        self.__cz_coordinates: Dict[str, Tuple[float, float]] = {}
 
     def add_conflict_zone(self, cz_id: str) -> None:
         '''
@@ -37,9 +37,9 @@ class Intersection:
         Add a trajectory to the intersection.
         If an adjacent pair in the trajectory is not in the set of edges, add it.
         '''
-        if not any([trajectory[0] in lane_cz for lane_cz in self.__src_lanes.values()]):
+        if not any(trajectory[0] in lane_cz for lane_cz in self.__src_lanes.values()):
             raise Exception("[Intersection.add_trajectory] trajectory not belongs to any source lane")
-        if not any([trajectory[-1] in lane_cz for lane_cz in self.__dst_lanes.values()]):
+        if not any(trajectory[-1] in lane_cz for lane_cz in self.__dst_lanes.values()):
             raise Exception("[Intersection.add_trajectory] trajectory not belongs to any destination lane")
         self.__trajectories.add(trajectory)
         for i in range(len(trajectory) - 1):
@@ -76,11 +76,11 @@ class Intersection:
         self.__cz_coordinates[cz_id] = (x, y)
 
     def get_traj_dst_lane(self, traj: Tuple[str]) -> str:
-        assert(traj in self.__trajectories)
+        assert traj in self.__trajectories
         for dst_lane_id, czs in self.__dst_lanes.items():
             if traj[-1] in czs:
                 return dst_lane_id
-        assert(False)
+        assert False
 
     @property
     def conflict_zones(self) -> Set[str]:
@@ -105,4 +105,3 @@ class Intersection:
     @property
     def dst_lanes(self) -> Dict[str, Set[str]]:
         return copy.deepcopy(self.__dst_lanes)
-

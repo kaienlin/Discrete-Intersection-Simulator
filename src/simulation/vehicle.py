@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Dict, Tuple, Set
+from typing import Dict, Tuple
 
 class VehicleState(enum.Enum):
     NOT_ARRIVED = enum.auto()
@@ -53,7 +53,7 @@ class Vehicle:
         if self.idx_on_traj == len(self.__trajectory):
             return "$"
         return self.__trajectory[self.__idx_on_traj]
-    
+
     def get_next_cz(self) -> str:
         if self.__idx_on_traj == len(self.__trajectory) - 1:
             return "$"
@@ -110,4 +110,3 @@ class Vehicle:
     @property
     def idx_on_traj(self) -> int:
         return self.__idx_on_traj
-

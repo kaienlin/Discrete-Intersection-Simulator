@@ -1,9 +1,9 @@
-from typing import Iterable, Optional, Tuple, List, Dict, Union, Set
+from typing import Optional, Tuple, List, Dict, Union, Set
 import enum
 import json
 import random
 
-from .tcg import TimingConflictGraph, Vertex, Edge, VertexState, EdgeType
+from .tcg import TimingConflictGraph, Vertex, VertexState
 from .intersection import Intersection
 from .vehicle import Vehicle, VehicleState
 
@@ -106,11 +106,11 @@ class Simulator:
         vehicle_dicts = []
         for veh in self._vehicles.values():
             vehicle_dicts.append(veh.asdict())
-        with open(path, "wt") as f:
+        with open(path, "wt", encoding="utf-8") as f:
             json.dump(vehicle_dicts, f, indent=2, sort_keys=True)
 
     def load_traffic(self, path) -> None:
-        with open(path, "rt") as f:
+        with open(path, "rt", encoding="utf-8") as f:
             vehicle_dicts = json.load(f)
         for veh_dict in vehicle_dicts:
             self.add_vehicle(
@@ -242,7 +242,7 @@ class Simulator:
 
             for vertex in self._non_executed_vertices:
                 if vertex.earliest_entering_time == self._timestamp:
-                    vertex.vehicle.set_state(VehicleState.READY)         
+                    vertex.vehicle.set_state(VehicleState.READY)
         except DeadlockException:
             self.status = SimulatorStatus.DEADLOCK
 
