@@ -1,4 +1,4 @@
-from typing import Iterable, Set, Dict, Tuple
+from typing import Iterable, Set, Dict, Tuple, Optional
 
 from simulation.intersection import Intersection
 from simulation.vehicle import Vehicle
@@ -7,154 +7,197 @@ from .Vertex import Vertex, VertexState
 from .Edge import Edge, EdgeType
 
 class TimingConflictGraph:
+    '''
+    reference: Graph-based modeling, scheduling, and verification
+               for intersection management of intelligent vehicles
+    '''
     def __init__(
         self,
-        vehicles: Set,
+        vehicles: Set[Vehicle],
         intersection: Intersection
     ):
-        self.__vehicles: Set = vehicles
-        self.__intersection: Intersection = intersection
+        self._vehicles: Set = vehicles
+        self._intersection: Intersection = intersection
+        self._V: Dict[Tuple[str, str], Vertex] = {}   # (vehicle id, cz id) -> Vertex
+        self._E: Dict[Tuple[int, int], Edge] = {}     # (src vertex id, dst vertex id) -> Edge
+
         self.build_graph()
 
-    def build_graph(self) -> None:
-        self.__V: Dict[Tuple[str, str], Vertex] = dict()
-        self.__E: Dict[Tuple[int, int], Edge] = dict()
+    @property
+    def V(self) -> Iterable[Vertex]:
+        return self._V.values()
 
-        for vehicle in self.__vehicles:
+    @property
+    def E(self) -> Iterable[Edge]:
+        return self._E.values()
+
+    def build_graph(self) -> None:
+        self._V: Dict[Tuple[str, str], Vertex] = {}
+        self._E: Dict[Tuple[int, int], Edge] = {}
+
+        for vehicle in self._vehicles:
             for cz_id in vehicle.trajectory:
-                self.__add_vertex(vehicle, cz_id)
-        
+                self._add_vertex(vehicle, cz_id)
+            self._add_vertex(vehicle, f"${vehicle.id}")
+
         # Add type-1 edges
-        for vehicle in self.__vehicles:
+        for vehicle in self._vehicles:
             for idx, cz_id in enumerate(vehicle.trajectory[:-1]):
-                self.__add_edge_by_idx(
+                self._add_edge_by_idx(
                     vehicle, cz_id,
                     vehicle, vehicle.trajectory[idx+1],
                     EdgeType.TYPE_1
                 )
-    
+            self._add_edge_by_idx(
+                vehicle, vehicle.trajectory[-1],
+                vehicle, f"${vehicle.id}",
+                EdgeType.TYPE_1,
+                waiting_time=0
+            )
+
         # Add type-2 edges
-        for src_lane_id in self.__intersection.src_lanes:
-            vehicles = [veh for veh in self.__vehicles if veh.src_lane_id == src_lane_id]
-            vehicles.sort(key=lambda veh: veh.earliest_arrival_time)
-            for idx, veh in enumerate(vehicles[:-1]):
-                for cz_id in veh.trajectory:
-                    for later_veh in vehicles[idx + 1:]:
-                        if cz_id in later_veh.trajectory:
-                            self.__add_edge_by_idx(veh, cz_id, later_veh, cz_id, EdgeType.TYPE_2)
+        for src_lane_id in self._intersection.src_lanes:
+            vehicles_from_this_src_lane = [veh for veh in self._vehicles
+                                           if veh.src_lane_id == src_lane_id]
+            vehicles_from_this_src_lane.sort(key=lambda veh: veh.earliest_arrival_time)
+            for idx, vehicle in enumerate(vehicles_from_this_src_lane[:-1]):
+                for cz_id in vehicle.trajectory:
+                    for later_vehicle in vehicles_from_this_src_lane[idx + 1:]:
+                        if cz_id in later_vehicle.trajectory:
+                            self._add_edge_by_idx(
+                                vehicle, cz_id, later_vehicle, cz_id, EdgeType.TYPE_2)
+
+        # Add type-3 edges
+        self.add_undecided_type3_edges()
+
+    @staticmethod
+    def type3_edge_condition(v1: Vertex, v2: Vertex) -> bool:
+        return v1.vehicle.id != v2.vehicle.id and v1.cz_id == v2.cz_id \
+               and v1.vehicle.src_lane_id != v2.vehicle.src_lane_id
+
+    def add_undecided_type3_edges(self) -> None:
+        for v1 in self._V.values():
+            for v2 in self._V.values():
+                if self.type3_edge_condition(v1, v2):
+                    self._add_edge_by_vtx(v1, v2, EdgeType.TYPE_3, decided=False)
+                    self._add_edge_by_vtx(v2, v1, EdgeType.TYPE_3, decided=False)
 
     def print(self) -> None:
-        for veh in self.__vehicles:
-            print(f"* Vehicle {veh.id}")
+        for veh in sorted(self._vehicles, key=lambda veh: veh.id):
+            print(f"* Vehicle {veh.id}, arrival time = {veh.earliest_arrival_time}")
             for cz_id in veh.trajectory:
-                v = self.get_v_by_idx(veh, cz_id)
-                print(f"    - ({v.vehicle.id}, {v.cz_id}): {v.state}; s = {v.entering_time} ", end = "")
+                v = self.get_vertex_by_vehicle_cz_pair(veh, cz_id)
+                print(f"    - ({v.vehicle.id}, {v.cz_id}): {v.state}; ", end="")
+                print(f"p = {v.passing_time}, s = {v.entering_time}, s' = {v.earliest_entering_time} ", end="")
                 print("parents: { ", end="")
                 for in_e in v.in_edges:
                     print(f"({in_e.v_from.vehicle.id}, {in_e.v_from.cz_id}) ", end="")
                 print("}")
 
-    def add_vehicle(self, vehicle: Vehicle) -> None:
-        self.__vehicles.add(vehicle)
-
-        for cz_id in vehicle.trajectory:
-            self.__add_vertex(vehicle, cz_id)
-
-        # Add type-1 edges
-        for idx, cz_id in enumerate(vehicle.trajectory[:-1]):
-            self.__add_edge_by_idx(
-                vehicle, cz_id,
-                vehicle, vehicle.trajectory[idx+1],
-                EdgeType.TYPE_1
-            )
-
-        # Add type-2 edges
-        same_lane_vehicles = [veh for veh in self.__vehicles if veh.src_lane_id == vehicle.src_lane_id]
-        for veh2 in same_lane_vehicles:
-            if veh2.id == vehicle.id:
-                continue
-            for cz_id in vehicle.trajectory:
-                if cz_id in veh2.trajectory:
-                    self.__add_edge_by_idx(vehicle, cz_id, veh2, cz_id, EdgeType.TYPE_2)
-
-        # Add type-3 edges
-        for cz_id in vehicle.trajectory:
-            v = self.__V[(vehicle.id, cz_id)]
-            for u in self.__V.values():
-                if u.cz_id == cz_id and (u.state == VertexState.EXECUTING or u.state == VertexState.EXECUTED):
-                    self.__add_edge_by_vtx(u, v, EdgeType.TYPE_3)
-        
-
     def start_execute(self, v: Vertex):
         key = (v.vehicle.id, v.cz_id)
-        if key not in self.__V or id(self.__V[key]) != id(v):
-            raise Exception("[TimingConflictGraph.start_execute] supplied vertex does not belongs to this graph")
+        if key not in self._V or id(self._V[key]) != id(v):
+            raise Exception("supplied vertex does not belongs to this graph")
+
+        next_v = None
+        w_e_to_next_v = 0
+        for out_edge in v.out_edges:
+            if out_edge.type == EdgeType.TYPE_1:
+                next_v = out_edge.v_to
+                w_e_to_next_v = out_edge.waiting_time
+
+        for out_edge in v.out_edges:
+            if out_edge.type == EdgeType.TYPE_3 and not out_edge.decided:
+                disjunctive_edge = self._E[(out_edge.v_to.id, out_edge.v_from.id)]
+                self._remove_edge(disjunctive_edge)
+                out_edge.decided = True
+
+                if next_v is not None:
+                    self._add_edge_by_vtx(
+                        next_v, out_edge.v_to,
+                        waiting_time=out_edge.waiting_time - w_e_to_next_v - out_edge.waiting_time,
+                        edge_type=EdgeType.TYPE_4
+                    )
+
         v.state = VertexState.EXECUTING
-        for u in self.__V.values():
-            if u.cz_id == v.cz_id \
-               and u.state == VertexState.NON_EXECUTED \
-               and u.vehicle.src_lane_id != v.vehicle.src_lane_id:
-                self.__add_edge_by_vtx(v, u, EdgeType.TYPE_3)
 
     def finish_execute(self, v: Vertex):
         key = (v.vehicle.id, v.cz_id)
-        if key not in self.__V or id(self.__V[key]) != id(v):
-            raise Exception("[TimingConflictGraph.finish_execute] supplied vertex does not belongs to this graph")
+        if key not in self._V or id(self._V[key]) != id(v):
+            raise Exception("supplied vertex does not belongs to this graph")
         v.state = VertexState.EXECUTED
 
     def reset_vertices_state(self) -> None:
-        for v in self.__V.values():
+        for v in self._V.values():
             v.state = VertexState.NON_EXECUTED
-        for key, e in list(self.__E.items()):
-            if e.type == EdgeType.TYPE_3:
-                e.v_from.out_edges.remove(e)
-                e.v_to.in_edges.remove(e)
-                del self.__E[key]
+            v.earliest_entering_time = None
+        self.add_undecided_type3_edges()
 
-    def add_unsure_type3_edges(self) -> None:
-        for v1 in self.__V.values():
-            for v2 in self.__V.values():
-                if v1.id != v2.id and v1.cz_id == v2.cz_id and (v1.id, v2.id) not in self.__E and (v2.id, v1.id) not in self.__E:
-                    self.__add_edge_by_vtx(v1, v2, EdgeType.TYPE_3)
-                    self.__add_edge_by_vtx(v2, v1, EdgeType.TYPE_3)
+    def verify(self) -> None:
+        for edge in self._E.values():
+            if not edge.decided:
+                raise Exception("undecided edge")
+            s_from = edge.v_from.entering_time
+            s_to = edge.v_to.entering_time
+            if s_to < s_from + edge.v_from.passing_time + edge.waiting_time:
+                raise Exception("timing constraint violated")
 
     def remove_vertex(self, v: Vertex) -> None:
         for in_e in v.in_edges:
             in_e.v_from.out_edges.remove(in_e)
-            del self.__E[(in_e.v_from.id, in_e.v_to.id)]
+            del self._E[(in_e.v_from.id, in_e.v_to.id)]
+
         for out_e in v.out_edges:
             out_e.v_to.in_edges.remove(out_e)
-            del self.__E[(out_e.v_from.id, out_e.v_to.id)]
-        del self.__V[(v.vehicle.id, v.cz_id)]
+            del self._E[(out_e.v_from.id, out_e.v_to.id)]
 
-    @property
-    def V(self) -> Iterable[Vertex]:
-        return self.__V.values()
-    
-    @property
-    def E(self) -> Iterable[Edge]:
-        return self.__E.values()
+        del self._V[(v.vehicle.id, v.cz_id)]
 
-    def get_v_by_idx(self, vehicle: Vehicle, cz_id: str) -> Vertex:
-        return self.__V[(vehicle.id, cz_id)]
+    def get_vertex_by_vehicle_cz_pair(self, vehicle: Vehicle, cz_id: str) -> Vertex:
+        return self._V[(vehicle.id, cz_id)]
 
-    def get_e_by_v_pair(self, v_from: Vertex, v_to: Vertex) -> Edge:
-        return self.__E[(v_from.id, v_to.id)]
+    def get_edge_by_vertex_pair(self, v_from: Vertex, v_to: Vertex) -> Edge:
+        return self._E[(v_from.id, v_to.id)]
 
-    def __add_vertex(self, vehicle: Vehicle, cz_id: str) -> None:
-        if (vehicle.id, cz_id) not in self.__V:
-            v = Vertex(len(self.__V), vehicle, cz_id)
-            self.__V[(vehicle.id, cz_id)] = v
+    def _add_vertex(self, vehicle: Vehicle, cz_id: str) -> None:
+        if (vehicle.id, cz_id) not in self._V:
+            v = Vertex(len(self._V), vehicle, cz_id)
+            self._V[(vehicle.id, cz_id)] = v
 
-    def __add_edge_by_idx(self, veh_from: Vehicle, cz_id_from: str, veh_to: Vehicle, cz_id_to: str, type: EdgeType) -> None:
-        v_from = self.__V[(veh_from.id, cz_id_from)]
-        v_to = self.__V[(veh_to.id, cz_id_to)]
-        self.__add_edge_by_vtx(v_from, v_to, type)
+    def _add_edge_by_idx(
+        self,
+        veh_from: Vehicle,
+        cz_id_from: str,
+        veh_to: Vehicle,
+        cz_id_to: str,
+        edge_type: EdgeType,
+        waiting_time: Optional[int] = None,
+        decided: bool = True
+    ) -> None:
+        v_from = self._V[(veh_from.id, cz_id_from)]
+        v_to = self._V[(veh_to.id, cz_id_to)]
+        self._add_edge_by_vtx(v_from, v_to, edge_type,
+                              waiting_time=waiting_time, decided=decided)
 
-    def __add_edge_by_vtx(self, v_from: Vertex, v_to: Vertex, type: EdgeType) -> None:
-        if (v_from.id, v_to.id) not in self.__E:
-            edge = Edge(len(self.__E), v_from, v_to, type)
-            self.__E[(v_from.id, v_to.id)] = edge
-            v_from.add_out_edge(edge)
-            v_to.add_in_edge(edge)
+    def _add_edge_by_vtx(
+        self,
+        v_from: Vertex,
+        v_to: Vertex,
+        edge_type: EdgeType,
+        waiting_time: Optional[int] = None,
+        decided: bool = True
+    ) -> None:
+        if (v_from.id, v_to.id) in self._E:
+            return
 
+        edge = Edge(len(self._E), v_from, v_to, edge_type,
+                    waiting_time=waiting_time, decided=decided)
+        self._E[(v_from.id, v_to.id)] = edge
+        v_from.add_out_edge(edge)
+        v_to.add_in_edge(edge)
+
+    def _remove_edge(self, edge: Edge) -> None:
+        key = (edge.v_from.id, edge.v_to.id)
+        edge.v_from.remove_out_edge(edge)
+        edge.v_to.remove_in_edge(edge)
+        del self._E[key]

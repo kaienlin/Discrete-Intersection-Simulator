@@ -31,17 +31,6 @@ class Vehicle:
         # simulation-related attributes
         self.__state: VehicleState = VehicleState.NOT_ARRIVED
         self.__idx_on_traj: int = -1
-        self.valid_transitions: Set[Tuple[VehicleState, VehicleState]] = {
-            (VehicleState.NOT_ARRIVED, VehicleState.READY),
-            (VehicleState.NOT_ARRIVED, VehicleState.BLOCKED),
-            (VehicleState.READY, VehicleState.MOVING),
-            (VehicleState.READY, VehicleState.BLOCKED),
-            (VehicleState.MOVING, VehicleState.READY),
-            (VehicleState.MOVING, VehicleState.BLOCKED),
-            (VehicleState.BLOCKED, VehicleState.READY),
-            (VehicleState.READY, VehicleState.LEFT),
-            (VehicleState.MOVING, VehicleState.LEFT)
-        }
 
     def reset(self) -> None:
         self.__state = VehicleState.NOT_ARRIVED
@@ -56,8 +45,6 @@ class Vehicle:
         self.__idx_on_traj += 1
 
     def set_state(self, state: VehicleState) -> None:
-        if (self.__state, state) not in self.valid_transitions:
-            raise Exception(f"[Vehicle.set_state] invalid state transition {self.__state} -> {state} with {self.id}")
         self.__state = state
 
     def get_cur_cz(self) -> str:
