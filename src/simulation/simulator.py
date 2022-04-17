@@ -125,13 +125,12 @@ class Simulator:
     def print_TCG(self) -> None:
         self._TCG.print()
 
-    def run(self) -> None:
+    def start(self) -> None:
         self._TCG = TimingConflictGraph(set(self._vehicles.values()), self._intersection)
-        self.reset()
-        self._status = SimulatorStatus.RUNNING
+        self.restart()
 
-    def reset(self) -> None:
-        self._status = SimulatorStatus.INITIALIZED
+    def restart(self) -> None:
+        self._status = SimulatorStatus.RUNNING
         self._timestamp = -1
         self._TCG.reset_vertices_state()
         for vehicle in self._vehicles.values():
