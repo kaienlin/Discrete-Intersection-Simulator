@@ -38,7 +38,7 @@ class TimingConflictGraph:
         for vehicle in self._vehicles:
             for cz_id in vehicle.trajectory:
                 self._add_vertex(vehicle, cz_id)
-            self._add_vertex(vehicle, f"${vehicle.id}")
+            self._add_vertex(vehicle, f"${vehicle.id}", passing_time=1)
 
         # Add type-1 edges
         for vehicle in self._vehicles:
@@ -159,9 +159,9 @@ class TimingConflictGraph:
     def get_edge_by_vertex_pair(self, v_from: Vertex, v_to: Vertex) -> Edge:
         return self._E[(v_from.id, v_to.id)]
 
-    def _add_vertex(self, vehicle: Vehicle, cz_id: str) -> None:
+    def _add_vertex(self, vehicle: Vehicle, cz_id: str, passing_time: Optional[int] = None) -> None:
         if (vehicle.id, cz_id) not in self._V:
-            v = Vertex(len(self._V), vehicle, cz_id)
+            v = Vertex(len(self._V), vehicle, cz_id, passing_time=passing_time)
             self._V[(vehicle.id, cz_id)] = v
 
     def _add_edge_by_idx(

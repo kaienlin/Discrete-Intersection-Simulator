@@ -3,7 +3,7 @@ import enum
 import json
 import random
 
-from .tcg import TimingConflictGraph, Vertex, VertexState
+from .tcg import TimingConflictGraph, Vertex, VertexState, EdgeType
 from .intersection import Intersection
 from .vehicle import Vehicle, VehicleState
 
@@ -137,7 +137,21 @@ class Simulator:
             vehicle.reset()
         for vertex in self._TCG.V:
             self._non_executed_vertices.add(vertex)
+        self.calculate_entering_time_wo_delay()
         self.step(None)
+
+    def calculate_entering_time_wo_delay(self) -> None:
+        for vehicle in self._vehicles.values():
+            lb: int = vehicle.earliest_arrival_time
+            vertex = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, vehicle.trajectory[0])
+            while True:
+                vertex.entering_time_wo_delay = lb
+                try:
+                    type1_edge = next(edge for edge in vertex.out_edges if edge.type == EdgeType.TYPE_1)
+                except StopIteration:
+                    break
+                lb += vertex.passing_time + type1_edge.waiting_time
+                vertex = type1_edge.v_to
 
     def _check_deadlock_dfs(self, vertex: Vertex, color: List[int]) -> bool:
         color[vertex.id] = 1
@@ -159,6 +173,41 @@ class Simulator:
                 if self._check_deadlock_dfs(vertex, color):
                     return True
         return False
+
+    def get_cumulative_delayed_time(self) -> int:
+        res: int = 0
+        for vehicle in self._vehicles.values():
+            cur_cz: str = vehicle.get_cur_cz()
+            if cur_cz == "^":
+                res += max(0, self._timestamp - vehicle.earliest_arrival_time)
+            elif cur_cz == "$":
+                last_vertex = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, f"${vehicle.id}")
+                res += last_vertex.entering_time - last_vertex.entering_time_wo_delay
+            else:
+                cur_vertex = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, cur_cz)
+                type1_edge = next(edge for edge in cur_vertex.out_edges
+                                  if edge.type == EdgeType.TYPE_1)
+                res += cur_vertex.entering_time - cur_vertex.entering_time_wo_delay
+                real_lb: int = cur_vertex.entering_time + cur_vertex.passing_time + type1_edge.waiting_time
+                if self._timestamp > real_lb:
+                    res += self._timestamp - real_lb
+        return res
+
+    def get_total_delayed_time(self) -> int:
+        res: int = 0
+        for vehicle in self._vehicles.values():
+            zero_delay: int = vehicle.earliest_arrival_time
+            for i, cz_id in enumerate(vehicle.trajectory):
+                v1 = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, cz_id)
+                zero_delay += v1.passing_time
+                if i != len(vehicle.trajectory) - 1:
+                    v2 = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, vehicle.trajectory[i+1])
+                    zero_delay += self._TCG.get_edge_by_vertex_pair(v1, v2).waiting_time
+
+            last_vertex: Vertex = self._TCG.get_vertex_by_vehicle_cz_pair(
+                vehicle, f"${vehicle.id}")
+            res += last_vertex.entering_time - zero_delay
+        return res
 
     def _compute_earliest_entering_time(self, vertex: Vertex) -> None:
         res: int = self._timestamp
@@ -197,7 +246,7 @@ class Simulator:
                 res[vertex.vehicle.id] = vertex
         return res
 
-    def step(self, moved_vehicle_id: Optional[str]):
+    def step(self, moved_vehicle_id: Optional[str]) -> None:
         if len(self._non_executed_vertices) == 0:
             self._status = SimulatorStatus.TERMINATED
             return
@@ -230,6 +279,8 @@ class Simulator:
                 self._executing_vertices.remove(vertex)
                 vertex.state = VertexState.EXECUTED
                 vertex.vehicle.set_state(VehicleState.BLOCKED)
+                if vertex.vehicle.get_cur_cz() == "$":
+                    vertex.vehicle.set_state(VehicleState.LEFT)
 
         try:
             self._update_all_earliest_entering_time()
@@ -237,6 +288,8 @@ class Simulator:
             for vehicle in self._vehicles.values():
                 if vehicle.state == VehicleState.NOT_ARRIVED \
                    and vehicle.earliest_arrival_time == self._timestamp:
+                    vehicle.set_state(VehicleState.BLOCKED)
+                if vehicle.state == VehicleState.READY:
                     vehicle.set_state(VehicleState.BLOCKED)
 
             for vertex in self._non_executed_vertices:
@@ -247,7 +300,7 @@ class Simulator:
 
     def observe(self):
         res = {
-            "vehicles": self._vehicles.values(),
+            "vehicles": list(self._vehicles.values()),
             "time": self._timestamp
         }
         return res
