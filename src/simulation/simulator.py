@@ -100,6 +100,12 @@ class Simulator:
         for cz_id in vehicle.trajectory:
             v = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, cz_id)
             self._TCG.remove_vertex(v)
+        for vertex in list(self._non_executed_vertices):
+            if vertex.vehicle.id == vehicle_id:
+                self._non_executed_vertices.remove(vertex)
+        for vertex in list(self._executing_vertices):
+            if vertex.vehicle.id == vehicle_id:
+                self._executing_vertices.remove(vertex)
         del self._vehicles[vehicle.id]
 
     def dump_traffic(self, path) -> None:
@@ -135,8 +141,8 @@ class Simulator:
         self._TCG.reset_vertices_state()
         for vehicle in self._vehicles.values():
             vehicle.reset()
-        for vertex in self._TCG.V:
-            self._non_executed_vertices.add(vertex)
+        self._non_executed_vertices = {vertex for vertex in self._TCG.V}
+        self._executing_vertices = set()
         self.calculate_entering_time_wo_delay()
         self.step(None)
 
@@ -153,7 +159,7 @@ class Simulator:
                 lb += vertex.passing_time + type1_edge.waiting_time
                 vertex = type1_edge.v_to
 
-    def _check_deadlock_dfs(self, vertex: Vertex, color: List[int]) -> bool:
+    def _check_deadlock_dfs(self, vertex: Vertex, color: Dict[str, int]) -> bool:
         color[vertex.id] = 1
         for out_edge in vertex.out_edges:
             if not out_edge.decided:
@@ -167,7 +173,7 @@ class Simulator:
         return False
 
     def check_deadlock(self) -> bool:
-        color = [0 for _ in self._TCG.V]
+        color = {v.id: 0 for v in self._TCG.V}
         for vertex in self._TCG.V:
             if color[vertex.id] == 0:
                 if self._check_deadlock_dfs(vertex, color):
@@ -296,7 +302,7 @@ class Simulator:
                 if vertex.earliest_entering_time == self._timestamp:
                     vertex.vehicle.set_state(VehicleState.READY)
         except DeadlockException:
-            self.status = SimulatorStatus.DEADLOCK
+            self._status = SimulatorStatus.DEADLOCK
 
     def observe(self):
         res = {
