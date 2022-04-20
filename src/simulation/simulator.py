@@ -281,7 +281,7 @@ class Simulator:
 
         # finish executing
         for vertex in list(self._executing_vertices):
-            if self._timestamp == vertex.entering_time + vertex.passing_time:
+            if self._timestamp >= vertex.entering_time + vertex.passing_time:
                 self._executing_vertices.remove(vertex)
                 vertex.state = VertexState.EXECUTED
                 vertex.vehicle.set_state(VehicleState.BLOCKED)

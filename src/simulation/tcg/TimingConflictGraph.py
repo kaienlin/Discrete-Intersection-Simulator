@@ -38,7 +38,7 @@ class TimingConflictGraph:
         for vehicle in self._vehicles:
             for cz_id in vehicle.trajectory:
                 self._add_vertex(vehicle, cz_id)
-            self._add_vertex(vehicle, f"${vehicle.id}", passing_time=1)
+            self._add_vertex(vehicle, f"${vehicle.id}", passing_time=0)
 
         # Add type-1 edges
         for vehicle in self._vehicles:
@@ -61,11 +61,15 @@ class TimingConflictGraph:
                                            if veh.src_lane_id == src_lane_id]
             vehicles_from_this_src_lane.sort(key=lambda veh: veh.earliest_arrival_time)
             for idx, vehicle in enumerate(vehicles_from_this_src_lane[:-1]):
-                for cz_id in vehicle.trajectory:
+                for j, cz_id in enumerate(vehicle.trajectory):
                     for later_vehicle in vehicles_from_this_src_lane[idx + 1:]:
                         if cz_id in later_vehicle.trajectory:
-                            self._add_edge_by_idx(
-                                vehicle, cz_id, later_vehicle, cz_id, EdgeType.TYPE_2)
+                            first_v = self.get_vertex_by_vehicle_cz_pair(vehicle, cz_id)
+                            later_v = self.get_vertex_by_vehicle_cz_pair(later_vehicle, cz_id)
+                            self._add_edge_by_vtx(
+                                first_v, later_v, EdgeType.TYPE_2)
+                            if j != len(vehicle.trajectory) - 1:
+                                self.add_type4_edge(first_v, later_v)
 
         # Add type-3 edges
         self.add_undecided_type3_edges()
@@ -81,6 +85,19 @@ class TimingConflictGraph:
                 if self.type3_edge_condition(v1, v2):
                     self._add_edge_by_vtx(v1, v2, EdgeType.TYPE_3, decided=False)
                     self._add_edge_by_vtx(v2, v1, EdgeType.TYPE_3, decided=False)
+    
+    def add_type4_edge(self, v_first: Vertex, v_second: Vertex) -> None:
+        try:
+            type1_edge: Edge = next(e for e in v_first.out_edges if e.type == EdgeType.TYPE_1)
+        except StopIteration:
+            return
+
+        type3_edge: Edge = self.get_edge_by_vertex_pair(v_first, v_second)
+        self._add_edge_by_vtx(
+            type1_edge.v_to, v_second, EdgeType.TYPE_4,
+            waiting_time=type3_edge.waiting_time - type1_edge.waiting_time - type1_edge.v_to.passing_time,
+            decided=True
+        )
 
     def print(self) -> None:
         for veh in sorted(self._vehicles, key=lambda veh: veh.id):
@@ -115,7 +132,7 @@ class TimingConflictGraph:
                 if next_v is not None:
                     self._add_edge_by_vtx(
                         next_v, out_edge.v_to,
-                        waiting_time=out_edge.waiting_time - w_e_to_next_v - out_edge.waiting_time,
+                        waiting_time=out_edge.waiting_time - w_e_to_next_v - next_v.passing_time,
                         edge_type=EdgeType.TYPE_4
                     )
 
