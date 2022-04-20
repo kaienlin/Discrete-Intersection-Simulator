@@ -89,6 +89,7 @@ class SimulatorEnv(VehicleBasedStateEnv):
             env_snapshot.decoding_table = self.decoding_table
             env_snapshot.encoding_table = self.encoding_table
             env_snapshot.raw_state_env.history.append([t_0, deepcopy(vehicles_0), ""])
+            env_snapshot.raw_state_env.snapshot = False
 
             res.append((S_0, env_snapshot))
 
