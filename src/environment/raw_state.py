@@ -1,7 +1,7 @@
 from typing import Tuple, Optional, Iterable, Set, List
 from copy import deepcopy
 
-from simulation import Intersection, Simulator, VehicleState, Vehicle
+from simulation import Intersection, Simulator, SimulatorStatus, VehicleState, Vehicle
 
 
 class RawStateSimulatorEnv:
@@ -14,14 +14,17 @@ class RawStateSimulatorEnv:
     def __init__(
         self,
         simulator: Simulator,
-        deadlock_cost: int = int(1e9)
+        deadlock_cost: int = int(1e9),
+        snapshot: bool = True
     ):
         self.sim: Simulator = simulator
         self.intersection: Intersection = simulator.intersection
         self.deadlock_cost: int = deadlock_cost
+        self.snapshot: bool = snapshot
 
         self.history: List[List[int, Iterable[Vehicle], str]] = []
         self.sim_snapshots: List[Simulator] = []
+        self.prev_cumulative_delayed_time: int = 0
 
     def render(self) -> None:
         if len(self.history) == 0:
@@ -39,12 +42,14 @@ class RawStateSimulatorEnv:
         if new_sim is not None:
             self.sim = new_sim
 
-        self.sim.reset_simulation()
-        self.sim.run()
+        self.sim.start()
 
-        timestamp, vehicles = self.sim.simulation_step_report()
+        observation = self.sim.observe()
+        timestamp, vehicles = observation["time"], observation["vehicles"]
         self.history = [[timestamp, deepcopy(vehicles), ""]]
-        self.sim_snapshots = [deepcopy(self.sim)]
+        if self.snapshot:
+            self.sim_snapshots = [deepcopy(self.sim)]
+        self.prev_cumulative_delayed_time = 0
 
         return vehicles
 
@@ -52,32 +57,30 @@ class RawStateSimulatorEnv:
         prev_timestamp, prev_vehicles, _ = self.history[-1]
 
         if action < 0 or action > len(prev_vehicles) \
-            or (action > 0 and prev_vehicles[action-1].state != VehicleState.WAITING):
+            or (action > 0 and prev_vehicles[action-1].state != VehicleState.READY):
             raise Exception(f"[RawStateSimulatorEnv] Invalid action {action}")
 
-        acted_vehicle_id: str = "" if action == 0 else prev_vehicles[action-1].id
-        num_moved = self.sim.simulation_step_act(acted_vehicle_id)
+        acted_vehicle_id: str = None if action == 0 else prev_vehicles[action-1].id
+        self.sim.step(acted_vehicle_id)
 
-        cur_timestamp, cur_vehicles = self.sim.simulation_step_report()
+        observation = self.sim.observe()
+        cur_timestamp, cur_vehicles = observation["time"], observation["vehicles"]
         self.history[-1][2] = acted_vehicle_id
         self.history.append([cur_timestamp, deepcopy(cur_vehicles), ""])
-        self.sim_snapshots.append(deepcopy(self.sim))
+        if self.snapshot:
+            self.sim_snapshots.append(deepcopy(self.sim))
 
-        # Calculate the delayed time cumulated from
-        # the previous times step to the current time step
-        prev_idle_ids: Set = {vehicle.id for vehicle in prev_vehicles
-                            if self.is_idle_state(vehicle.state)}
+        cur_cumulative_delayed_time: int = self.sim.get_cumulative_delayed_time()
+        delayed_time = cur_cumulative_delayed_time - self.prev_cumulative_delayed_time
+        self.prev_cumulative_delayed_time = cur_cumulative_delayed_time
 
-        delayed_time: int = (cur_timestamp - prev_timestamp) * (len(prev_idle_ids) - num_moved)
-
-        terminal = self.sim.status != "RUNNING"
-        deadlock = False
-        if terminal and self.sim.status == "DEADLOCK":
-            deadlock = True
+        terminal: bool = self.sim.status != SimulatorStatus.RUNNING
+        deadlock: bool = terminal and self.sim.status == SimulatorStatus.DEADLOCK
+        if deadlock:
             delayed_time += self.deadlock_cost
 
         return deepcopy(cur_vehicles), delayed_time, terminal, {"deadlock": deadlock}
 
     @staticmethod
     def is_idle_state(vehicle_state: VehicleState) -> bool:
-        return vehicle_state in (VehicleState.BLOCKED, VehicleState.WAITING)
+        return vehicle_state in (VehicleState.BLOCKED, VehicleState.READY)

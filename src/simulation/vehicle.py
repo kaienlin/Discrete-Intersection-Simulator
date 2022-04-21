@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import enum
-from typing import Dict, Tuple, Set
+from typing import Dict, Tuple
 
 class VehicleState(enum.Enum):
     NOT_ARRIVED = enum.auto()
-    WAITING = enum.auto()
+    READY = enum.auto()
     MOVING = enum.auto()
     BLOCKED = enum.auto()
     LEFT = enum.auto()
@@ -31,17 +31,6 @@ class Vehicle:
         # simulation-related attributes
         self.__state: VehicleState = VehicleState.NOT_ARRIVED
         self.__idx_on_traj: int = -1
-        self.valid_transitions: Set[Tuple[VehicleState, VehicleState]] = {
-            (VehicleState.NOT_ARRIVED, VehicleState.WAITING),
-            (VehicleState.NOT_ARRIVED, VehicleState.BLOCKED),
-            (VehicleState.WAITING, VehicleState.MOVING),
-            (VehicleState.WAITING, VehicleState.BLOCKED),
-            (VehicleState.MOVING, VehicleState.WAITING),
-            (VehicleState.MOVING, VehicleState.BLOCKED),
-            (VehicleState.BLOCKED, VehicleState.WAITING),
-            (VehicleState.WAITING, VehicleState.LEFT),
-            (VehicleState.MOVING, VehicleState.LEFT)
-        }
 
     def reset(self) -> None:
         self.__state = VehicleState.NOT_ARRIVED
@@ -51,13 +40,11 @@ class Vehicle:
         return self.__idx_on_traj == len(self.trajectory) - 1
 
     def move_to_next_cz(self) -> None:
-        if self.__state != VehicleState.WAITING:
+        if self.__state != VehicleState.READY:
             raise Exception("[Vehicle.move_to_next_CZ] invalid vehicle state")
         self.__idx_on_traj += 1
 
     def set_state(self, state: VehicleState) -> None:
-        if (self.__state, state) not in self.valid_transitions:
-            raise Exception(f"[Vehicle.set_state] invalid state transition {self.__state} -> {state} with {self.id}")
         self.__state = state
 
     def get_cur_cz(self) -> str:
@@ -66,7 +53,7 @@ class Vehicle:
         if self.idx_on_traj == len(self.__trajectory):
             return "$"
         return self.__trajectory[self.__idx_on_traj]
-    
+
     def get_next_cz(self) -> str:
         if self.__idx_on_traj == len(self.__trajectory) - 1:
             return "$"
@@ -123,4 +110,3 @@ class Vehicle:
     @property
     def idx_on_traj(self) -> int:
         return self.__idx_on_traj
-

@@ -102,7 +102,7 @@ class IGreedyPolicy(Policy):
                 G.add_edge(cur_cz, next_cz)
 
         for i, vehicle in enumerate(state):
-            if vehicle.state == VehicleState.WAITING:
+            if vehicle.state == VehicleState.READY:
                 if vehicle.idx_on_traj >= len(vehicle.trajectory) - 2:
                     return i + 1
                 cz1 = vehicle.trajectory[vehicle.idx_on_traj + 1]

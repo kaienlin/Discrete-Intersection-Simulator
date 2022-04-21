@@ -51,7 +51,7 @@ class Digraph:
     def __init__(self):
         self.name_to_idx: Dict[Any, int] = {}
         self.idx_to_name: Dict[int, Any] = {}
-        self.adj: List[Set] = []
+        self.adj: List[List] = []
 
     @property
     def vertices(self) -> List:
@@ -74,13 +74,13 @@ class Digraph:
             idx = len(self.adj)
             self.name_to_idx[v] = idx
             self.idx_to_name[idx] = v
-            self.adj.append(set())
+            self.adj.append([])
         return idx
     
     def add_edge(self, src: Any, dst: Any) -> None:
         src_idx = self.add_vertex(src)
         dst_idx = self.add_vertex(dst)
-        self.adj[src_idx].add(dst_idx)
+        self.adj[src_idx].append(dst_idx)
 
     def remove_edge(self, src: Any, dst: Any) -> None:
         src_idx = self.name_to_idx.get(src, None)

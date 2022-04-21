@@ -131,7 +131,7 @@ class MinimumEnv(py_environment.PyEnvironment):
         raw_action: int = 0
 
         if 0 < action <= len(self.prev_included_vehicles) \
-            and self.prev_included_vehicles[action - 1].state == VehicleState.WAITING:
+            and self.prev_included_vehicles[action - 1].state == VehicleState.READY:
             acted_vehicle_id = self.prev_included_vehicles[action - 1].id
 
             for i, vehicle in enumerate(self.raw_state_env.history[-1][1]):
@@ -191,15 +191,15 @@ class MinimumEnv(py_environment.PyEnvironment):
         def vehicle_priority_func(vehicle: Vehicle) -> int:
             if 0 <= vehicle.idx_on_traj <= len(vehicle.trajectory) - 1:
                 return -1
-            if vehicle.state == VehicleState.WAITING:
+            if vehicle.state == VehicleState.READY:
                 return -1
             if vehicle.idx_on_traj == -1 \
-                and vehicle.state in [VehicleState.WAITING, VehicleState.BLOCKED]:
+                and vehicle.state in [VehicleState.READY, VehicleState.BLOCKED]:
                 num_pred_vehicles = 0
                 for other in vehicles:
                     if other.src_lane_id == vehicle.src_lane_id \
                         and other.idx_on_traj == -1 \
-                        and other.state in [VehicleState.WAITING, VehicleState.BLOCKED] \
+                        and other.state in [VehicleState.READY, VehicleState.BLOCKED] \
                         and other.earliest_arrival_time < vehicle.earliest_arrival_time:
                         num_pred_vehicles += 1
                 return num_pred_vehicles
@@ -222,7 +222,7 @@ class MinimumEnv(py_environment.PyEnvironment):
 
             vehicle_state[self.field_sizes[0]] = min(0, vehicle.idx_on_traj) + 2
 
-            if vehicle.state == VehicleState.WAITING:
+            if vehicle.state == VehicleState.READY:
                 vehicle_state[self.field_sizes[0] + 1] = 1
 
             vehicle_state_list.append(vehicle_state)

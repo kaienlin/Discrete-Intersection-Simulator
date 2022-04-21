@@ -60,7 +60,7 @@ class SimulatorEnv(PositionBasedStateEnv):
             self.prev_idle_veh = set([veh.id for veh in vehicles if self.__is_idle_state(veh.state)])
 
             # loop until reaching a state containing at least one waiting vehicles or terminal
-            if len([veh.id for veh in vehicles if veh.state == VehicleState.WAITING]) > 0 or self.sim.status != "RUNNING":
+            if len([veh.id for veh in vehicles if veh.state == VehicleState.READY]) > 0 or self.sim.status != "RUNNING":
                 break
 
         next_state = self.__encode_state_from_vehicles(vehicles)
@@ -72,7 +72,7 @@ class SimulatorEnv(PositionBasedStateEnv):
         return next_state, waiting_time_sum / len(self.sim.vehicles), terminal, {}
 
     def __is_idle_state(self, state: VehicleState) -> bool:
-        return state == VehicleState.WAITING or state == VehicleState.BLOCKED
+        return state == VehicleState.READY or state == VehicleState.BLOCKED
 
     def __is_frontmost_vehicle(self, vehicle: Vehicle) -> bool:
         return self.sim.is_frontmost_vehicle(vehicle)
@@ -83,7 +83,7 @@ class SimulatorEnv(PositionBasedStateEnv):
             if veh.get_cur_cz() == "^":
                 if self.__is_frontmost_vehicle(veh):
                     decoded_state.src_lane_state[veh.src_lane_id].next_position = veh.get_next_cz()
-                    if veh.state == VehicleState.WAITING:
+                    if veh.state == VehicleState.READY:
                         decoded_state.src_lane_state[veh.src_lane_id].vehicle_state = "waiting"
                     elif veh.state == VehicleState.BLOCKED:
                         decoded_state.src_lane_state[veh.src_lane_id].vehicle_state = "blocked"
@@ -95,11 +95,11 @@ class SimulatorEnv(PositionBasedStateEnv):
                 veh_pos = veh.get_cur_cz()
                 next_veh_pos = veh.get_next_cz()
                 if veh_pos == "^":
-                    if veh.state == VehicleState.WAITING:
+                    if veh.state == VehicleState.READY:
                         decoded_state.src_lane_state[veh.src_lane_id].next_position = next_veh_pos
                 elif veh_pos != "$":
                     decoded_state.cz_state[veh_pos].next_position = next_veh_pos
-                    if veh.state == VehicleState.WAITING:
+                    if veh.state == VehicleState.READY:
                         decoded_state.cz_state[veh_pos].vehicle_state = "waiting"
                     elif veh.state == VehicleState.BLOCKED:
                         decoded_state.cz_state[veh_pos].vehicle_state = "blocked"

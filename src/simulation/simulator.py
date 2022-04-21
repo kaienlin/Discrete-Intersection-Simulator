@@ -1,51 +1,22 @@
-from .tcg import TimingConflictGraph, Vertex, Edge, VertexState, EdgeType
-from .intersection import Intersection
-from .vehicle import Vehicle, VehicleState
-
-from typing import Iterable, Optional, Tuple, List, Dict, Union, Set
-import heapq
+from typing import Optional, Tuple, List, Dict, Union, Set
 import enum
 import json
 import random
 
-
-class EventType(enum.Enum):
-    END_MOVING = enum.auto()
-    START_WAITING = enum.auto()
-    ARRIVAL = enum.auto()
+from .tcg import TimingConflictGraph, Vertex, VertexState, EdgeType
+from .intersection import Intersection
+from .vehicle import Vehicle, VehicleState
 
 
-class EventQueueItem:
-    def __init__(self, t: int, type: EventType, v: Vertex):
-        self.time = t
-        self.type = type
-        self.vertex = v
-
-    def __lt__(self, other) -> bool:
-        return self.time < other.time
+class SimulatorStatus(enum.Enum):
+    INITIALIZED = enum.auto()
+    RUNNING = enum.auto()
+    TERMINATED = enum.auto()
+    DEADLOCK = enum.auto()
 
 
-class VertexEventQueue:
-    def __init__(self, initial_elements: List[EventQueueItem] = []):
-        self.__heap: List[EventQueueItem] = initial_elements
-        heapq.heapify(self.__heap)
-    
-    def clear(self) -> None:
-        self.__heap = []
-        heapq.heapify(self.__heap)
-    
-    def empty(self) -> bool:
-        return len(self.__heap) == 0
-
-    def top(self) -> EventQueueItem:
-        return self.__heap[0]
-
-    def pop(self) -> None:
-        heapq.heappop(self.__heap)
-
-    def push(self, t: int, type: EventType, v: Vertex):
-        if EventQueueItem(t, type, v) not in self.__heap:
-            heapq.heappush(self.__heap, EventQueueItem(t, type, v))
+class DeadlockException(Exception):
+    pass
 
 
 class Simulator:
@@ -54,17 +25,37 @@ class Simulator:
         intersection: Intersection,
         disturbance_prob: Optional[float] = None,
     ):
-        self.__intersection: Intersection = intersection
-        
-        self.__vehicles: Dict[str, Vehicle] = dict()
-        self.__status: str = "INITIALIZED"
-        self.__timestamp: int = 0
-        self.__TCG: TimingConflictGraph = TimingConflictGraph(set(self.__vehicles.values()), self.__intersection)
-        self.__event_queue = VertexEventQueue()
-        self.__prev_moved = False
-
+        self._intersection: Intersection = intersection
         self.disturbance_prob: Union[None, float] = disturbance_prob
-        self.just_start_waiting: Set[str] = set()
+
+        self._vehicles: Dict[str, Vehicle] = {}
+        self._status: str = SimulatorStatus.INITIALIZED
+        self._timestamp: int = -1
+        self._TCG: TimingConflictGraph = TimingConflictGraph(
+            set(self._vehicles.values()), intersection)
+
+        self._executing_vertices: Set[Vertex] = set()
+        self._non_executed_vertices: Set[Vertex] = set()
+
+    @property
+    def intersection(self) -> Intersection:
+        return self._intersection
+
+    @property
+    def vehicles(self) -> List[Vehicle]:
+        return list(self._vehicles.values())
+
+    @property
+    def status(self) -> str:
+        return self._status
+
+    @property
+    def timestamp(self) -> int:
+        return self._timestamp
+
+    @property
+    def TCG(self) -> TimingConflictGraph:
+        return self._TCG
 
     def add_vehicle(
         self,
@@ -75,22 +66,24 @@ class Simulator:
         dst_lane_id: str,
         vertex_passing_time: int = 10
     ):
-        if _id in self.__vehicles:
-            raise Exception("[Simulator.add_vehicle] _id has been used")
+        if self._status == SimulatorStatus.RUNNING:
+            raise Exception("cannot add vehicle when the simulator is running")
+        if _id in self._vehicles:
+            raise Exception("_id has been used")
         if arrival_time < 0:
-            raise Exception("[Simulator.add_vehicle] negative arrival_time")
+            raise Exception("negative arrival_time")
         if len(trajectory) == 0:
-            raise Exception("[Simulator.add_vehicle] empty trajectory")
-        if src_lane_id not in self.__intersection.src_lanes:
-            raise Exception("[Simulator.add_vehicle] src_lane_id not in intersection")
-        if dst_lane_id not in self.__intersection.dst_lanes:
-            raise Exception("[Simulator.add_vehicle] dst_lane_id not in intersection")
-        if trajectory[0] not in self.__intersection.src_lanes[src_lane_id]:
-            raise Exception("[Simulator.add_vehicle] the first CZ of trajectory does not belongs to src_lane_id")
-        if trajectory[-1] not in self.__intersection.dst_lanes[dst_lane_id]:
-            raise Exception("[Simulator.add_vehicle] the last CZ of trajectory does not belongs to dst_lane_id")
+            raise Exception("empty trajectory")
+        if src_lane_id not in self._intersection.src_lanes:
+            raise Exception("src_lane_id not in intersection")
+        if dst_lane_id not in self._intersection.dst_lanes:
+            raise Exception("dst_lane_id not in intersection")
+        if trajectory[0] not in self._intersection.src_lanes[src_lane_id]:
+            raise Exception("the first CZ of trajectory does not belongs to src_lane_id")
+        if trajectory[-1] not in self._intersection.dst_lanes[dst_lane_id]:
+            raise Exception("the last CZ of trajectory does not belongs to dst_lane_id")
         if vertex_passing_time < 0:
-            raise Exception("[Simulator.add_vehicle] negative vertex_passing_time")
+            raise Exception("negative vertex_passing_time")
 
         vehicle = Vehicle(
             _id,
@@ -100,34 +93,31 @@ class Simulator:
             dst_lane_id,
             vertex_passing_time
         )
-        self.__vehicles[vehicle.id] = vehicle
-        if self.__status == "RUNNING":
-            self.__TCG.add_vehicle(vehicle)
-            v = self.__TCG.get_v_by_idx(vehicle, vehicle.trajectory[0])
-            self.__event_queue.push(max(self.__timestamp + 1, vehicle.earliest_arrival_time), EventType.ARRIVAL, v)
+        self._vehicles[vehicle.id] = vehicle
 
     def remove_vehicle(self, vehicle_id: str) -> None:
-        vehicle: Vehicle = self.__vehicles[vehicle_id]
+        vehicle: Vehicle = self._vehicles[vehicle_id]
         for cz_id in vehicle.trajectory:
-            v = self.__TCG.get_v_by_idx(vehicle, cz_id)
-            self.__TCG.remove_vertex(v)
-        del self.__vehicles[vehicle.id]
-        buffer = []
-        while not self.__event_queue.empty():
-            buffer.append(self.__event_queue.top())
-            self.__event_queue.pop()
-        for ev in buffer:
-            if ev.vertex.vehicle.id != vehicle_id:
-                self.__event_queue.push(ev.time, ev.type, ev.vertex)
+            v = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, cz_id)
+            self._TCG.remove_vertex(v)
+        for vertex in list(self._non_executed_vertices):
+            if vertex.vehicle.id == vehicle_id:
+                self._non_executed_vertices.remove(vertex)
+        for vertex in list(self._executing_vertices):
+            if vertex.vehicle.id == vehicle_id:
+                self._executing_vertices.remove(vertex)
+        del self._vehicles[vehicle.id]
 
     def dump_traffic(self, path) -> None:
         vehicle_dicts = []
-        for veh in self.__vehicles.values():
+        for veh in self._vehicles.values():
             vehicle_dicts.append(veh.asdict())
-        json.dump(vehicle_dicts, open(path, "w"), indent=2, sort_keys=True)
+        with open(path, "wt", encoding="utf-8") as f:
+            json.dump(vehicle_dicts, f, indent=2, sort_keys=True)
 
     def load_traffic(self, path) -> None:
-        vehicle_dicts = json.load(open(path, "r"))
+        with open(path, "rt", encoding="utf-8") as f:
+            vehicle_dicts = json.load(f)
         for veh_dict in vehicle_dicts:
             self.add_vehicle(
                 veh_dict["id"],
@@ -138,236 +128,185 @@ class Simulator:
                 veh_dict["vertex_passing_time"]
             )
 
-    def __ready_condition(self, v: Vertex) -> bool:
-        if v.vehicle.state != VehicleState.WAITING and v.vehicle.state != VehicleState.BLOCKED:
-            return False
-        if v.state != VertexState.NON_EXECUTED:
-            return False
-        for in_e in v.in_edges:
-            parent = in_e.v_from
-            if in_e.type == EdgeType.TYPE_1 and parent.state != VertexState.EXECUTING:
-                return False
-            if in_e.type != EdgeType.TYPE_1 and parent.state != VertexState.EXECUTED:
-                return False
-        return True
+    def print_TCG(self) -> None:
+        self._TCG.print()
 
-    def __not_blocked(self, v: Vertex) -> bool:
-        '''
-        return true if v is not blocked by higher priority vehicles
-        '''
-        for in_e in v.in_edges:
-            parent = in_e.v_from
-            if in_e.type != EdgeType.TYPE_1 and parent.state != VertexState.EXECUTED:
-                return False
-        return True
+    def start(self) -> None:
+        self._TCG = TimingConflictGraph(set(self._vehicles.values()), self._intersection)
+        self.restart()
 
-    def __next_not_blocked(self, v: Vertex) -> bool:
-        '''
-        return true if the next CZ of v.vehicle is not blocked by higher priority vehicles
-        '''
-        next_v = self.__TCG.get_v_by_idx(v.vehicle, v.vehicle.trajectory[v.vehicle.idx_on_traj + 1])
-        return self.__not_blocked(next_v)
+    def restart(self) -> None:
+        self._status = SimulatorStatus.RUNNING
+        self._timestamp = -1
+        self._TCG.reset_vertices_state()
+        for vehicle in self._vehicles.values():
+            vehicle.reset()
+        self._non_executed_vertices = {vertex for vertex in self._TCG.V}
+        self._executing_vertices = set()
+        self.calculate_entering_time_wo_delay()
+        self.step(None)
 
-    def __compute_earliest_entering_time(self, v: Vertex) -> int:
-        '''
-        compute the "earliest entering time" of a vertex
-        for each parent p of vertex v:
-            if (p, v) is an TYPE_1 edge, then p.state should be executing
-            if (p, v) is an TYPE_2 or TYPE_3 edge, then p.state should be executed
-        this is called "ready condition" temporarily
-        '''
-        if not self.__ready_condition(v):
-            print(v.vehicle.state)
-        assert(self.__ready_condition(v))
-        res = self.__timestamp
-        if v.cz_id == v.vehicle.trajectory[0]:
-            res = max(res, v.vehicle.earliest_arrival_time)
-        for in_e in v.in_edges:
-            parent = in_e.v_from
-            res = max(res, parent.entering_time + parent.passing_time + in_e.waiting_time)
-            for out_e in parent.out_edges:
-                if out_e.id != in_e.id and out_e.type == EdgeType.TYPE_1:
-                    res = max(res, out_e.v_to.entering_time - out_e.waiting_time + in_e.waiting_time)
+    def calculate_entering_time_wo_delay(self) -> None:
+        for vehicle in self._vehicles.values():
+            lb: int = vehicle.earliest_arrival_time
+            vertex = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, vehicle.trajectory[0])
+            while True:
+                vertex.entering_time_wo_delay = lb
+                try:
+                    type1_edge = next(edge for edge in vertex.out_edges if edge.type == EdgeType.TYPE_1)
+                except StopIteration:
+                    break
+                lb += vertex.passing_time + type1_edge.waiting_time
+                vertex = type1_edge.v_to
+
+    def _check_deadlock_dfs(self, vertex: Vertex, color: Dict[str, int]) -> bool:
+        color[vertex.id] = 1
+        for out_edge in vertex.out_edges:
+            if not out_edge.decided:
+                continue
+            if color[out_edge.v_to.id] == 0:
+                if self._check_deadlock_dfs(out_edge.v_to, color):
+                    return True
+            elif color[out_edge.v_to.id] == 1:
+                return True
+        color[vertex.id] = 2
+        return False
+
+    def check_deadlock(self) -> bool:
+        color = {v.id: 0 for v in self._TCG.V}
+        for vertex in self._TCG.V:
+            if color[vertex.id] == 0:
+                if self._check_deadlock_dfs(vertex, color):
+                    return True
+        return False
+
+    def get_cumulative_delayed_time(self) -> int:
+        res: int = 0
+        for vehicle in self._vehicles.values():
+            cur_cz: str = vehicle.get_cur_cz()
+            if cur_cz == "^":
+                res += max(0, self._timestamp - vehicle.earliest_arrival_time)
+            elif cur_cz == "$":
+                last_vertex = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, f"${vehicle.id}")
+                res += last_vertex.entering_time - last_vertex.entering_time_wo_delay
+            else:
+                cur_vertex = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, cur_cz)
+                type1_edge = next(edge for edge in cur_vertex.out_edges
+                                  if edge.type == EdgeType.TYPE_1)
+                res += cur_vertex.entering_time - cur_vertex.entering_time_wo_delay
+                real_lb: int = cur_vertex.entering_time + cur_vertex.passing_time + type1_edge.waiting_time
+                if self._timestamp > real_lb:
+                    res += self._timestamp - real_lb
         return res
 
-    def __enqueue_front_vertices(self) -> None:
-        for vehicle in self.__vehicles.values():
-            v = self.__TCG.get_v_by_idx(vehicle, vehicle.trajectory[0])
-            self.__event_queue.push(vehicle.earliest_arrival_time, EventType.ARRIVAL, v)
+    def get_total_delayed_time(self) -> int:
+        res: int = 0
+        for vehicle in self._vehicles.values():
+            zero_delay: int = vehicle.earliest_arrival_time
+            for i, cz_id in enumerate(vehicle.trajectory):
+                v1 = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, cz_id)
+                zero_delay += v1.passing_time
+                if i != len(vehicle.trajectory) - 1:
+                    v2 = self._TCG.get_vertex_by_vehicle_cz_pair(vehicle, vehicle.trajectory[i+1])
+                    zero_delay += self._TCG.get_edge_by_vertex_pair(v1, v2).waiting_time
 
-    @property
-    def intersection(self) -> Intersection:
-        return self.__intersection
+            last_vertex: Vertex = self._TCG.get_vertex_by_vehicle_cz_pair(
+                vehicle, f"${vehicle.id}")
+            res += last_vertex.entering_time - zero_delay
+        return res
 
-    @property
-    def vehicles(self) -> List[Vehicle]:
-        return list(self.__vehicles.values())
-        
-    @property
-    def status(self) -> str:
-        return self.__status
+    def _compute_earliest_entering_time(self, vertex: Vertex) -> None:
+        res: int = self._timestamp
 
-    @property
-    def timestamp(self) -> int:
-        return self.__timestamp
+        if vertex.cz_id == vertex.vehicle.trajectory[0]:
+            res = max(res, vertex.vehicle.earliest_arrival_time)
 
-    @property
-    def TCG(self) -> TimingConflictGraph:
-        return self.__TCG
-
-    def print_TCG(self) -> None:
-        self.__TCG.print()
-
-    def get_waiting_veh_of_src_lane(self, src_lane_id: str):
-        for veh in self.__vehicles.values():
-            if veh.idx_on_traj == -1 and veh.src_lane_id == src_lane_id and veh.state == VehicleState.WAITING:
-                return veh
-        return None
-
-    def get_waiting_veh_on_cz(self, cz_id: str):
-        for veh in self.__vehicles.values():
-            cur_cz_id = veh.get_cur_cz()
-            if cur_cz_id == cz_id and veh.state == VehicleState.WAITING:
-                return veh
-        return None
-
-    def is_frontmost_vehicle(self, vehicle: Vehicle) -> bool:
-        if vehicle.get_cur_cz() != "^" or vehicle.state == VehicleState.NOT_ARRIVED:
-            return False
-        cz_id: str = vehicle.get_next_cz()
-        v: Vertex = self.__TCG.get_v_by_idx(vehicle, cz_id)
-        for in_e in v.in_edges:
-            if in_e.type == EdgeType.TYPE_2 and in_e.v_from.state == VertexState.NON_EXECUTED:
-                return False
-        return True
-            
-    def run(self) -> None:
-        self.__status = "RUNNING"
-        self.__TCG = TimingConflictGraph(set(self.__vehicles.values()), self.__intersection)
-        self.__enqueue_front_vertices()
-    
-    def reset_simulation(self) -> None:
-        self.__status = "INITIALIZED"
-        self.__timestamp = -1
-        self.__event_queue.clear()
-        self.__TCG.reset_vertices_state()
-        self.just_start_waiting = set()
-        for veh in self.__vehicles.values():
-            veh.reset()
-
-    def handle_event_queue(self) -> None:
-        while not self.__event_queue.empty() and self.__event_queue.top().time == self.__timestamp:
-            ev = self.__event_queue.top()
-            self.__event_queue.pop()
-            if ev.vertex.vehicle.id not in self.__vehicles:
-                del ev
+        for in_e in vertex.in_edges:
+            if not in_e.decided:
                 continue
-            if ev.type == EventType.END_MOVING:
-                if ev.vertex.vehicle.on_last_cz():
-                    ev.vertex.vehicle.set_state(VehicleState.WAITING)
-                elif self.__next_not_blocked(ev.vertex):
-                    ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
-                    next_v = self.__TCG.get_v_by_idx(ev.vertex.vehicle, ev.vertex.vehicle.get_next_cz())
-                    avail_time = self.__compute_earliest_entering_time(next_v)
-                    self.__event_queue.push(avail_time, EventType.START_WAITING, next_v)
-                else:
-                    ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
-            elif ev.type == EventType.ARRIVAL:
-                if self.__not_blocked(ev.vertex):
-                    ev.vertex.vehicle.set_state(VehicleState.WAITING)
-                else:
-                    ev.vertex.vehicle.set_state(VehicleState.BLOCKED)
-            elif ev.type == EventType.START_WAITING:
-                if self.__not_blocked(ev.vertex):
-                    ev.vertex.vehicle.set_state(VehicleState.WAITING)
-                    self.just_start_waiting.add(ev.vertex.vehicle.id)
 
-    def simulation_step_report(self) -> Tuple[int, Iterable[Vehicle]]:
-        if any([veh.state == VehicleState.WAITING for veh in self.__vehicles.values()]):
-            if not self.__prev_moved:
-                self.__timestamp += 1
-            else:
-                self.__prev_moved = False
-        elif not self.__event_queue.empty():
-            self.__timestamp = self.__timestamp + 1
-        else:
-            if any([veh.state != VehicleState.LEFT for veh in self.__vehicles.values()]):
-                self.__status = "DEADLOCK"
-            else:
-                self.__status = "TERMINATED"
-            return (self.__timestamp, list(self.__vehicles.values()))
+            parent: Vertex = in_e.v_from
 
-        self.handle_event_queue()
+            if parent.earliest_entering_time is None:
+                self._compute_earliest_entering_time(parent)
 
-        return (self.__timestamp, list(self.__vehicles.values()))
+            res = max(res, parent.earliest_entering_time \
+                           + parent.passing_time + in_e.waiting_time)
 
-    def __release_cz(self, vertex: Vertex):
-        for out_e in vertex.out_edges:
-            if out_e.type == EdgeType.TYPE_1:
-                continue
-            child = out_e.v_to
-            if child.vehicle.state == VehicleState.BLOCKED and self.__ready_condition(child):
-                avail_time = self.__compute_earliest_entering_time(child)
-                self.__event_queue.push(avail_time, EventType.START_WAITING, child)
+        vertex.earliest_entering_time = res
 
-    def __block_cz(self, vertex: Vertex):
-        for out_e in vertex.out_edges:
-            if out_e.type == EdgeType.TYPE_1:
-                continue
-            child = out_e.v_to
-            if child.vehicle.state == VehicleState.WAITING and child.vehicle.get_next_cz() == vertex.cz_id \
-               and not self.__ready_condition(child):
-                child.vehicle.set_state(VehicleState.BLOCKED)
+    def _update_all_earliest_entering_time(self) -> None:
+        if self.check_deadlock():
+            raise DeadlockException()
 
-    def __move_vehicle(self, veh_id: str) -> None:
-        vehicle = self.__vehicles[veh_id]
+        for vertex in self._non_executed_vertices:
+            vertex.earliest_entering_time = None
 
-        next_cz = vehicle.get_next_cz()
-        next_vertex = None
-        if next_cz != "$":
-            next_vertex = self.__TCG.get_v_by_idx(vehicle, next_cz)
-            next_vertex.entering_time = self.__timestamp
+        for vertex in self._non_executed_vertices:
+            self._compute_earliest_entering_time(vertex)
 
-        if vehicle.idx_on_traj != -1:
-            cur_vertex = self.__TCG.get_v_by_idx(vehicle, vehicle.get_cur_cz())
-            self.__TCG.finish_execute(cur_vertex)
-            self.__release_cz(cur_vertex)
-            self.handle_event_queue()
+    def get_executable_vertices(self) -> Dict[str, Vertex]:
+        res: Dict[str, Vertex] = {}
+        for vertex in self._non_executed_vertices:
+            if vertex.earliest_entering_time == self._timestamp:
+                res[vertex.vehicle.id] = vertex
+        return res
 
-        vehicle.move_to_next_cz()
-
-        if next_cz == "$":
-            vehicle.set_state(VehicleState.LEFT)
+    def step(self, moved_vehicle_id: Optional[str]) -> None:
+        if len(self._non_executed_vertices) == 0:
+            self._status = SimulatorStatus.TERMINATED
             return
 
-        vehicle.set_state(VehicleState.MOVING)
-        
-        self.__event_queue.push(next_vertex.entering_time + next_vertex.get_consumed_time(), EventType.END_MOVING, next_vertex)
-        self.__TCG.start_execute(next_vertex)
-        self.__block_cz(next_vertex)
+        executable_vertices: Dict[str, Vertex] = self.get_executable_vertices()
+        vertex_to_be_executed: Union[None, Vertex] = executable_vertices.get(moved_vehicle_id, None)
 
-    def simulation_step_act(self, allowed_veh_id: str) -> None:
-        if allowed_veh_id == "" or allowed_veh_id not in self.__vehicles \
-           or self.__vehicles[allowed_veh_id].state != VehicleState.WAITING:
-            self.__prev_moved = False
-        else:
-            self.__prev_moved = True
-        
-        vehicle_moved = {veh_id: False for veh_id in self.__vehicles.keys()}
-        if self.__prev_moved:
-            vehicle_moved[allowed_veh_id] = True
-        if self.disturbance_prob is not None:
-            for veh_id in vehicle_moved:
-                if veh_id not in self.just_start_waiting:
-                    continue
-                self.just_start_waiting.remove(veh_id)
-                if random.uniform(0, 1) < self.disturbance_prob:
-                    vehicle_moved[veh_id] = True
-        
-        num_moved = 0
-        for veh_id, is_moved in vehicle_moved.items():
-            if is_moved and self.__vehicles[veh_id].state == VehicleState.WAITING:
-                self.__move_vehicle(veh_id)
-                num_moved += 1
+        if vertex_to_be_executed is not None:
+            # Remove Type-3 edge, Add Type-4 edge, set vertex.state = EXECUTING
+            self._TCG.start_execute(vertex_to_be_executed)
 
-        return num_moved
+            # Update vertex information
+            vertex_to_be_executed.entering_time = self._timestamp
+            vertex_to_be_executed.earliest_entering_time = self._timestamp
+            self._non_executed_vertices.remove(vertex_to_be_executed)
+            self._executing_vertices.add(vertex_to_be_executed)
+
+            # Update vehicle information
+            vertex_to_be_executed.vehicle.move_to_next_cz()
+            vertex_to_be_executed.vehicle.set_state(VehicleState.MOVING)
+
+        # If there is no vehicle moved or there is no more vehicles can be moved
+        if vertex_to_be_executed is None or len(executable_vertices) == 1:
+            # move to the next time step
+            self._timestamp += 1
+
+        # finish executing
+        for vertex in list(self._executing_vertices):
+            if self._timestamp >= vertex.entering_time + vertex.passing_time:
+                self._executing_vertices.remove(vertex)
+                vertex.state = VertexState.EXECUTED
+                vertex.vehicle.set_state(VehicleState.BLOCKED)
+                if vertex.vehicle.get_cur_cz() == "$":
+                    vertex.vehicle.set_state(VehicleState.LEFT)
+
+        try:
+            self._update_all_earliest_entering_time()
+
+            for vehicle in self._vehicles.values():
+                if vehicle.state == VehicleState.NOT_ARRIVED \
+                   and vehicle.earliest_arrival_time == self._timestamp:
+                    vehicle.set_state(VehicleState.BLOCKED)
+                if vehicle.state == VehicleState.READY:
+                    vehicle.set_state(VehicleState.BLOCKED)
+
+            for vertex in self._non_executed_vertices:
+                if vertex.earliest_entering_time == self._timestamp:
+                    vertex.vehicle.set_state(VehicleState.READY)
+        except DeadlockException:
+            self._status = SimulatorStatus.DEADLOCK
+
+    def observe(self):
+        res = {
+            "vehicles": list(self._vehicles.values()),
+            "time": self._timestamp
+        }
+        return res
