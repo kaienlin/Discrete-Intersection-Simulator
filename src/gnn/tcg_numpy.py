@@ -1,7 +1,9 @@
 from typing import Dict, Iterable, List, Tuple, Union
+from copy import deepcopy
 
 import numpy as np
 import networkx as nx
+from simulation import vehicle
 
 from simulation.intersection import Intersection
 from simulation.vehicle import Vehicle
@@ -31,15 +33,16 @@ class TimingConflictGraphNumpy:
 
         # calculate the number of vertices
         self.num_vertices: int = 0
-        self.vehicle_cz_to_vertex: Dict[Tuple[Vehicle, str], int] = {}
-        self.vertex_to_vehicle_cz: List[Tuple[Vehicle, str]] = []
+        self.vehicle_cz_to_vertex: Dict[Tuple[int, str], int] = {}
+        self.vertex_to_vehicle_cz: List[Tuple[int, str]] = []
+        
         self.first_vertices: List[int] = []
         self.last_vertices: List[int] = []
 
         passing_time_list: List[int] = []
         arrival_time_list: List[int] = []
 
-        for vehicle in self.vehicle_list:
+        for vehicle_idx, vehicle in enumerate(self.vehicle_list):
             self.num_vertices += len(vehicle.trajectory)
             arrival_time_list.append(vehicle.earliest_arrival_time)
             arrival_time_list.extend([0] * (len(vehicle.trajectory) - 1))
@@ -48,8 +51,8 @@ class TimingConflictGraphNumpy:
 
             for cz_id in vehicle.trajectory:
                 idx: int = len(self.vertex_to_vehicle_cz)
-                self.vehicle_cz_to_vertex[(vehicle, cz_id)] = idx
-                self.vertex_to_vehicle_cz.append((vehicle, cz_id))
+                self.vehicle_cz_to_vertex[(vehicle_idx, cz_id)] = idx
+                self.vertex_to_vehicle_cz.append((vehicle_idx, cz_id))
                 first_vertex = idx if first_vertex is None else first_vertex
                 last_vertex = idx
 
@@ -57,6 +60,8 @@ class TimingConflictGraphNumpy:
             
             self.first_vertices.append(first_vertex)
             self.last_vertices.append(last_vertex)
+        
+        self.vehicle_progress: np.ndarray = np.array(self.first_vertices, dtype=np.int32)
         
         # initialize (reversed) adjacency matrices
         mat_shape = (self.num_vertices, self.num_vertices)
@@ -71,11 +76,11 @@ class TimingConflictGraphNumpy:
         self.arrival_time: np.ndarray = np.array(arrival_time_list, dtype=np.int32)
 
         # add type-1 edges
-        for vehicle in self.vehicle_list:
+        for vehicle_idx, vehicle in enumerate(self.vehicle_list):
             for i, cz_id in enumerate(vehicle.trajectory[:-1]):
                 next_cz_id: str = vehicle.trajectory[i+1]
-                vertex_1: int = self.vehicle_cz_to_vertex[vehicle, cz_id]
-                vertex_2: int = self.vehicle_cz_to_vertex[vehicle, next_cz_id]
+                vertex_1: int = self.vehicle_cz_to_vertex[vehicle_idx, cz_id]
+                vertex_2: int = self.vehicle_cz_to_vertex[vehicle_idx, next_cz_id]
                 self.t1_edge[vertex_2, vertex_1] = self.def_edge_waiting_time[1]
         
         tmp_mask = self.t1_edge != 0
@@ -86,6 +91,8 @@ class TimingConflictGraphNumpy:
             for vertex_2 in range(vertex_1 + 1, self.num_vertices):
                 vehicle_1, cz_1 = self.vertex_to_vehicle_cz[vertex_1]
                 vehicle_2, cz_2 = self.vertex_to_vehicle_cz[vertex_2]
+                vehicle_1 = self.vehicle_list[vehicle_1]
+                vehicle_2 = self.vehicle_list[vehicle_2]
                 if vehicle_1.id == vehicle_2.id or cz_1 != cz_2:
                     continue
                 if vehicle_1.src_lane_id == vehicle_2.src_lane_id:
@@ -125,6 +132,19 @@ class TimingConflictGraphNumpy:
                and self.is_scheduled[adj_rev[vertex].nonzero()].all():
                 res.append(vertex)
         return res
+
+    @property
+    def schedulable_mask(self) -> np.ndarray:
+        mask: np.ndarray = np.zeros(self.num_vehicles, dtype=np.bool_)
+        for vertex in self.schedulable_vertices:
+            for i, front_vertex in enumerate(self.vehicle_progress):
+                if vertex == front_vertex:
+                    mask[i] = np.True_
+        return mask
+
+    @property
+    def front_unscheduled_vertices(self) -> np.ndarray:
+        return np.array(self.vehicle_progress)
 
     def add_t4_edge(self, vertex: int, edge: np.ndarray) -> None:
         next = self.t1_next[vertex]
@@ -178,6 +198,12 @@ class TimingConflictGraphNumpy:
 
         # update entering time lower bounds
         self.update_entering_time_lb()
+        
+        vehicle_idx, _ = self.vertex_to_vehicle_cz[vertex]
+        if self.vehicle_progress[vehicle_idx] == self.last_vertices[vehicle_idx]:
+            self.vehicle_progress[vehicle_idx] = -1
+        else:
+            self.vehicle_progress[vehicle_idx] += 1
 
     def schedule_vertex_test(self, vertex: int) -> bool:
         '''
@@ -186,6 +212,7 @@ class TimingConflictGraphNumpy:
         t3_edge_cpy = self.t3_edge.copy()
         t3_edge_undecided_cpy = self.t3_edge_undecided.copy()
         t4_edge_cpy = self.t4_edge.copy()
+        vehicle_progress_cpy = self.vehicle_progress.copy()
 
         try:
             self.schedule_vertex(vertex)
@@ -193,10 +220,34 @@ class TimingConflictGraphNumpy:
             self.t3_edge = t3_edge_cpy
             self.t3_edge_undecided = t3_edge_undecided_cpy
             self.t4_edge = t4_edge_cpy
+            self.vehicle_progress = vehicle_progress_cpy
             self.is_scheduled[vertex] = np.False_
             return False
 
         return True
+
+    def test_deadlock(self, vertex: int) -> bool:
+        '''
+        return True if scheduling this vertex causes a deadlock
+        '''
+        t3_edge_cpy = self.t3_edge.copy()
+        t3_edge_undecided_cpy = self.t3_edge_undecided.copy()
+        t4_edge_cpy = self.t4_edge.copy()
+        vehicle_progress_cpy = self.vehicle_progress.copy()
+        res: bool = False
+
+        try:
+            self.schedule_vertex(vertex)
+        except DeadlockException:
+            res = True
+
+        self.t3_edge = t3_edge_cpy
+        self.t3_edge_undecided = t3_edge_undecided_cpy
+        self.t4_edge = t4_edge_cpy
+        self.vehicle_progress = vehicle_progress_cpy
+        self.is_scheduled[vertex] = np.False_
+
+        return res
 
     def get_delay_time(self) -> float:
         leaving_time = self.entering_time_lb[self.last_vertices] \
@@ -210,7 +261,8 @@ class TimingConflictGraphNumpy:
         G = nx.DiGraph()
 
         for vertex in range(self.num_vertices):
-            vehicle, cz_id = self.vertex_to_vehicle_cz[vertex]
+            vehicle_idx, cz_id = self.vertex_to_vehicle_cz[vertex]
+            vehicle = self.vehicle_list[vehicle_idx]
             G.add_node(vertex, label=f"[{vertex}]\n" \
                                    + f"{vehicle.id}, {cz_id}\n" \
                                    + f"p={self.passing_time[vertex]}, "
