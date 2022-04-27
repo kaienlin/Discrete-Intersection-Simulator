@@ -9,13 +9,8 @@ from .tcg_numpy import TimingConflictGraphNumpy
 class TcgEnv:
     def __init__(
         self,
-        intersection: Intersection,
-        vehicles: Iterable[Vehicle],
         ensure_deadlock_free: bool = True
     ):
-        self.tcg: TimingConflictGraphNumpy \
-            = TimingConflictGraphNumpy(intersection, vehicles)
-        self.prev_delay_time: int = 0
         self.ensure_deadlock_free: bool = ensure_deadlock_free
 
     def done(self) -> bool:
