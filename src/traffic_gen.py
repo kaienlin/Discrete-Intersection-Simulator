@@ -56,8 +56,7 @@ def dump_traffic(path: Path, vehicles: List[Vehicle]) -> None:
 def random_traffic_generator(
     intersection: Intersection,
     num_iter: int = 10000,
-    max_vehicle_num: int = 10,
-    max_time: int = 300,
+    vehicle_num: int = 10,
     poisson_parameter_list: List[float] = [0.5],
 ):
     continue_condition = lambda _: True
@@ -69,9 +68,10 @@ def random_traffic_generator(
         src_to_traj = get_src_traj_dict(intersection)
         poisson_param: float = random.choice(poisson_parameter_list)
         prob = poisson_param / 10
-        for t in range(max_time):
+        t = 0
+        while True:
             for src_lane_id in intersection.src_lanes:
-                if random.random() < prob and len(vehicles) < max_vehicle_num:
+                if random.random() < prob and len(vehicles) < vehicle_num:
                     traj = random.choice(list(src_to_traj[src_lane_id].keys()))
                     dst_lane_id = src_to_traj[src_lane_id][traj]
                     new_vehicle = Vehicle(
@@ -80,8 +80,9 @@ def random_traffic_generator(
                         vertex_passing_time=random.randint(7, 13)
                     )
                     vehicles.append(new_vehicle)
-            if len(vehicles) == max_vehicle_num:
+            if len(vehicles) == vehicle_num:
                 break
+            t += 1
         i += 1
         yield vehicles
 
@@ -99,7 +100,7 @@ def main(
     output_dir: str = "./",
     seed: int = 0,
     num: int = 10,
-    max_vehicle_num: int = 10,
+    vehicle_num: int = 10,
     poisson_parameter_list: List = [0.5],
 ):
     random.seed(seed)
@@ -111,7 +112,7 @@ def main(
     gen = random_traffic_generator(
         intersection,
         num_iter=num,
-        max_vehicle_num=max_vehicle_num,
+        vehicle_num=vehicle_num,
         poisson_parameter_list=poisson_parameter_list
     )
     for i, vehicles in enumerate(gen):
