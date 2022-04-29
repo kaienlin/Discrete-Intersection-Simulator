@@ -86,14 +86,17 @@ def random_traffic_generator(
         i += 1
         yield vehicles
 
-def datadir_traffic_generator(intersection: Intersection, data_dir):
+def datadir_traffic_generator(intersection: Intersection, data_dir, inf: bool = False):
     data_dir = Path(data_dir)
     if not data_dir.exists() or not data_dir.is_dir():
         raise Exception("data_dir is not a directory")
 
-    for traffic_file in sorted(data_dir.iterdir(), key=lambda f: f.stem):
-        vehicles: List[Vehicle] = load_vehicles_from_file(intersection, traffic_file)
-        yield vehicles
+    while True:
+        for traffic_file in sorted(data_dir.iterdir(), key=lambda f: f.stem):
+            vehicles: List[Vehicle] = load_vehicles_from_file(intersection, traffic_file)
+            yield vehicles
+        if not inf:
+            break
 
 def main(
     intersection_file_path: str,
