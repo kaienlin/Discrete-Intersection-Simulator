@@ -70,6 +70,11 @@ class TimingConflictGraphNumpy:
         self.t3_edge: np.ndarray = np.zeros(mat_shape, dtype=np.int32)
         self.t3_edge_undecided: np.ndarray = np.zeros(mat_shape, dtype=np.int32)
         self.t4_edge: np.ndarray = np.zeros(mat_shape, dtype=np.int32)
+        
+        # only points to the "direct" precedent
+        self.t3_edge_min: np.ndarray = np.zeros(mat_shape, dtype=np.int32)
+
+        #TODO: t2_edge_min, t4_edge_min
 
         # initialize passing time array, arrival time array
         self.passing_time: np.ndarray = np.array(passing_time_list, dtype=np.int32)
@@ -123,6 +128,8 @@ class TimingConflictGraphNumpy:
         # initialize scheduled indicator
         self.is_scheduled: np.ndarray = np.zeros(self.num_vertices, dtype=np.bool_)
 
+        self.last_vertex_of_cz: Dict[str, int] = {cz: -1 for cz in self.intersection.conflict_zones}
+
     @property
     def schedulable_vertices(self) -> List[int]:
         adj_rev = self.t1_edge + self.t2_edge + self.t3_edge + self.t4_edge
@@ -135,11 +142,11 @@ class TimingConflictGraphNumpy:
 
     @property
     def schedulable_mask(self) -> np.ndarray:
-        mask: np.ndarray = np.zeros(self.num_vehicles, dtype=np.bool_)
+        mask: np.ndarray = np.full(self.num_vehicles, fill_value=1, dtype=bool)
         for vertex in self.schedulable_vertices:
             for i, front_vertex in enumerate(self.vehicle_progress):
                 if vertex == front_vertex:
-                    mask[i] = np.True_
+                    mask[i] = 0
         return mask
 
     @property
@@ -199,11 +206,19 @@ class TimingConflictGraphNumpy:
         # update entering time lower bounds
         self.update_entering_time_lb()
         
-        vehicle_idx, _ = self.vertex_to_vehicle_cz[vertex]
-        if self.vehicle_progress[vehicle_idx] == self.last_vertices[vehicle_idx]:
-            self.vehicle_progress[vehicle_idx] = -1
-        else:
+        vehicle_idx, cz_id = self.vertex_to_vehicle_cz[vertex]
+        if self.vehicle_progress[vehicle_idx] != self.last_vertices[vehicle_idx]:
             self.vehicle_progress[vehicle_idx] += 1
+
+        pred: int = self.last_vertex_of_cz.get(cz_id, -1)
+        if pred != -1:
+            self.t3_edge_min[vertex, pred] = self.t3_edge[vertex, pred] + self.t2_edge[vertex, pred]
+            if self.t3_edge_min[vertex, pred] == 0:
+                print(vertex, pred)
+                print(self.t3_edge_min[vertex])
+            assert self.t3_edge_min[vertex, pred] != 0
+
+        self.last_vertex_of_cz[cz_id] = vertex
 
     def schedule_vertex_test(self, vertex: int) -> bool:
         '''
@@ -234,6 +249,8 @@ class TimingConflictGraphNumpy:
         t3_edge_undecided_cpy = self.t3_edge_undecided.copy()
         t4_edge_cpy = self.t4_edge.copy()
         vehicle_progress_cpy = self.vehicle_progress.copy()
+        t3_edge_min_cpy = self.t3_edge_min.copy()
+        last_vertex_of_cz_cpy = deepcopy(self.last_vertex_of_cz)
         res: bool = False
 
         try:
@@ -246,6 +263,8 @@ class TimingConflictGraphNumpy:
         self.t4_edge = t4_edge_cpy
         self.vehicle_progress = vehicle_progress_cpy
         self.is_scheduled[vertex] = np.False_
+        self.t3_edge_min = t3_edge_min_cpy
+        self.last_vertex_of_cz = last_vertex_of_cz_cpy
 
         return res
 

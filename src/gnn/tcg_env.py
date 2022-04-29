@@ -18,31 +18,31 @@ class TcgEnv:
 
     def make_state(self):
         adj: np.ndarray = self.tcg.t1_edge + self.tcg.t2_edge + self.tcg.t3_edge + self.tcg.t4_edge
+        adj = (adj != 0).astype(np.single)
 
         entering_time_lb: np.ndarray = self.tcg.entering_time_lb
         is_scheduled: np.ndarray = self.tcg.is_scheduled
         feature: np.ndarray = np.concatenate([
-            entering_time_lb.reshape(-1, 1),
-            is_scheduled.reshape(-1, 1)
+            entering_time_lb.reshape(-1, 1).astype(np.single) / 10,
+            is_scheduled.reshape(-1, 1).astype(np.single)
         ], axis=1)
 
-        front_vertices: np.ndarray = self.tcg.front_unscheduled_vertices
+        front_vertices: np.ndarray = self.tcg.front_unscheduled_vertices.astype(np.int64)
         mask: np.ndarray = self.tcg.schedulable_mask
 
         if self.ensure_deadlock_free:
             for i, vertex in enumerate(front_vertices):
-                if mask[i]:
+                if not mask[i]:
                     deadlock: bool = self.tcg.test_deadlock(vertex)
                     if deadlock:
-                        mask[i] = np.False_
-
+                        mask[i] = 1
         return adj, feature, front_vertices, mask
 
     def step(self, action: int):
         self.tcg.schedule_vertex(action)
         adj, feature, front_vertices, mask = self.make_state()
         cur_delay_time = self.tcg.get_delay_time()
-        reward = (self.prev_delay_time - cur_delay_time) / self.tcg.num_vehicles
+        reward = (self.prev_delay_time - cur_delay_time)
         self.prev_delay_time = cur_delay_time
         return adj, feature, reward, self.done(), front_vertices, mask
 
