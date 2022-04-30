@@ -17,8 +17,9 @@ class TcgEnv:
         return self.tcg.is_scheduled.all()
 
     def make_state(self):
-        adj: np.ndarray = self.tcg.t1_edge + self.tcg.t2_edge + self.tcg.t3_edge + self.tcg.t4_edge
+        adj: np.ndarray = self.tcg.t1_edge + self.tcg.t3_edge_min + self.tcg.t4_edge_min
         adj = (adj != 0).astype(np.single)
+        adj += np.eye(adj.shape[0], dtype=np.single)
 
         entering_time_lb: np.ndarray = self.tcg.entering_time_lb
         is_scheduled: np.ndarray = self.tcg.is_scheduled

@@ -71,10 +71,9 @@ class TimingConflictGraphNumpy:
         self.t3_edge_undecided: np.ndarray = np.zeros(mat_shape, dtype=np.int32)
         self.t4_edge: np.ndarray = np.zeros(mat_shape, dtype=np.int32)
         
-        # only points to the "direct" precedent
+        # record the "minimum" set of edges to maintain the decided precedence
         self.t3_edge_min: np.ndarray = np.zeros(mat_shape, dtype=np.int32)
-
-        #TODO: t2_edge_min, t4_edge_min
+        self.t4_edge_min: np.ndarray = np.zeros(mat_shape, dtype=np.int32)
 
         # initialize passing time array, arrival time array
         self.passing_time: np.ndarray = np.array(passing_time_list, dtype=np.int32)
@@ -115,6 +114,7 @@ class TimingConflictGraphNumpy:
 
         # initialize earliest entering time for each vertex
         self.entering_time_lb: np.ndarray = np.zeros(self.num_vertices, dtype=np.int32)
+        self.entering_time_lb_loose: np.ndarray = np.zeros(self.num_vertices, dtype=np.int32)
         self.update_entering_time_lb()
 
         # the leaving time without delay
@@ -128,7 +128,7 @@ class TimingConflictGraphNumpy:
         # initialize scheduled indicator
         self.is_scheduled: np.ndarray = np.zeros(self.num_vertices, dtype=np.bool_)
 
-        self.last_vertex_of_cz: Dict[str, int] = {cz: -1 for cz in self.intersection.conflict_zones}
+        self.cz_history: Dict[str, List[int]] = {cz: [] for cz in self.intersection.conflict_zones}
 
     @property
     def schedulable_vertices(self) -> List[int]:
@@ -159,6 +159,14 @@ class TimingConflictGraphNumpy:
             return
         children = edge[:, vertex].nonzero()[0]
         self.t4_edge[children, next] = edge[children, vertex] \
+            - self.t1_edge[next, vertex] - self.passing_time[next]
+
+    def add_t4_edge_min(self, vertex: int, edge: np.ndarray) -> None:
+        next = self.t1_next[vertex]
+        if next == -1:
+            return
+        children = edge[:, vertex].nonzero()[0]
+        self.t4_edge_min[children, next] = edge[children, vertex] \
             - self.t1_edge[next, vertex] - self.passing_time[next]
 
     def update_entering_time_lb(self) -> None:
@@ -210,15 +218,17 @@ class TimingConflictGraphNumpy:
         if self.vehicle_progress[vehicle_idx] != self.last_vertices[vehicle_idx]:
             self.vehicle_progress[vehicle_idx] += 1
 
-        pred: int = self.last_vertex_of_cz.get(cz_id, -1)
-        if pred != -1:
+        preds: int = self.cz_history.get(cz_id, [])
+        if len(preds) > 0:
+            pred = preds[-1]
             self.t3_edge_min[vertex, pred] = self.t3_edge[vertex, pred] + self.t2_edge[vertex, pred]
             if self.t3_edge_min[vertex, pred] == 0:
                 print(vertex, pred)
                 print(self.t3_edge_min[vertex])
             assert self.t3_edge_min[vertex, pred] != 0
+            self.add_t4_edge_min(pred, self.t3_edge_min)
 
-        self.last_vertex_of_cz[cz_id] = vertex
+        self.cz_history[cz_id].append(vertex)
 
     def schedule_vertex_test(self, vertex: int) -> bool:
         '''
@@ -250,7 +260,7 @@ class TimingConflictGraphNumpy:
         t4_edge_cpy = self.t4_edge.copy()
         vehicle_progress_cpy = self.vehicle_progress.copy()
         t3_edge_min_cpy = self.t3_edge_min.copy()
-        last_vertex_of_cz_cpy = deepcopy(self.last_vertex_of_cz)
+        cz_history_cpy = deepcopy(self.cz_history)
         res: bool = False
 
         try:
@@ -264,7 +274,7 @@ class TimingConflictGraphNumpy:
         self.vehicle_progress = vehicle_progress_cpy
         self.is_scheduled[vertex] = np.False_
         self.t3_edge_min = t3_edge_min_cpy
-        self.last_vertex_of_cz = last_vertex_of_cz_cpy
+        self.cz_history = cz_history_cpy
 
         return res
 
@@ -297,9 +307,9 @@ class TimingConflictGraphNumpy:
                 )
         
         add_edge(G, self.t1_edge, "#000000")
-        add_edge(G, self.t2_edge, "#0c1eeb")
-        add_edge(G, self.t3_edge, "#fa0e0a")
-        add_edge(G, self.t4_edge, "#04cf1f")
+        #add_edge(G, self.t2_edge, "#0c1eeb")
+        add_edge(G, self.t3_edge_min, "#fa0e0a")
+        add_edge(G, self.t4_edge_min, "#04cf1f")
 
         a_graph = nx.nx_agraph.to_agraph(G)
         a_graph.layout("dot")
