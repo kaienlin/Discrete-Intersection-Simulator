@@ -4,8 +4,8 @@ import numpy as np
 
 from utility import read_intersection_from_json
 from traffic_gen import load_vehicles_from_file, datadir_traffic_generator
-from gnn.tcg_env import TcgEnv
-from gnn.tcg_numpy import TimingConflictGraphNumpy
+from tcg.tcg_env import TcgEnv
+from tcg.tcg_numpy import TimingConflictGraphNumpy
 
 
 def igreedy_policy(env, schedulable_vertices, feature):
