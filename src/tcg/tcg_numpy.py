@@ -206,6 +206,7 @@ class TimingConflictGraphNumpy:
         self.t3_edge[:, vertex] = self.t3_edge_undecided[:, vertex]
 
         # delete all incoming undecided type-3 edges
+        self.t3_edge_undecided[:, vertex].fill(0)
         self.t3_edge_undecided[vertex].fill(0)
 
         # add Type-4 edges
@@ -286,7 +287,7 @@ class TimingConflictGraphNumpy:
     def get_last_leaving_time(self) -> float:
         return np.max(self.entering_time_lb + self.passing_time) / 10
 
-    def plot(self) -> None:
+    def plot(self, fname="fig.png") -> None:
         G = nx.DiGraph()
 
         for vertex in range(self.num_vertices):
@@ -313,5 +314,5 @@ class TimingConflictGraphNumpy:
 
         a_graph = nx.nx_agraph.to_agraph(G)
         a_graph.layout("dot")
-        a_graph.draw("fig.png")
+        a_graph.draw(fname)
 
