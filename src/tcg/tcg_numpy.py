@@ -89,6 +89,7 @@ class TimingConflictGraphNumpy:
         
         tmp_mask = self.t1_edge != 0
         self.t1_next: np.ndarray = np.where(tmp_mask.any(axis=0), tmp_mask.argmax(axis=0), -1)
+        self.t1_prev: np.ndarray = np.where(tmp_mask.any(axis=1), tmp_mask.argmax(axis=1), -1)
 
         # add type-2, type-3 edges
         for vertex_1 in range(self.num_vertices - 1):

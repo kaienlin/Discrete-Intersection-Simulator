@@ -3,6 +3,7 @@ from typing import Iterable
 import numpy as np
 
 from simulation import Intersection, Vehicle
+from cycle_finder import CycleFinder
 from .tcg_numpy import TimingConflictGraphNumpy
 
 
@@ -15,6 +16,26 @@ class TcgEnv:
 
     def done(self) -> bool:
         return self.tcg.is_scheduled.all()
+
+    def _test_deadlock(self, vertex: int) -> bool:
+        vertex2 = self.tcg.t1_next[vertex]
+        if vertex2 == -1:
+            return False
+        cz2 = self.tcg.vertex_to_vehicle_cz[vertex2][1]
+        cz1 = self.tcg.vertex_to_vehicle_cz[vertex][1]       
+
+        vertex0 = self.tcg.t1_prev[vertex]
+        if vertex0 != -1:
+            cz0 = self.tcg.vertex_to_vehicle_cz[vertex0][1]
+            self.transitions.remove((cz0, cz1))
+
+        self.transitions.add((cz1, cz2))
+        deadlock = self.cycle_finder.has_cycle(self.transitions, (cz1, cz2))
+        self.transitions.remove((cz1, cz2))
+        if vertex0 != -1:
+            self.transitions.add((cz0, cz1))
+
+        return deadlock
 
     def make_state(self):
         adj: np.ndarray = self.tcg.t1_edge + self.tcg.t3_edge_min + self.tcg.t4_edge_min
@@ -34,13 +55,22 @@ class TcgEnv:
         if self.ensure_deadlock_free:
             for i, vertex in enumerate(front_vertices):
                 if not mask[i]:
-                    deadlock: bool = self.tcg.test_deadlock(vertex)
+                    deadlock: bool = self._test_deadlock(vertex)
                     if deadlock:
                         mask[i] = 1
         return adj, feature, front_vertices, mask
 
     def step(self, action: int):
         self.tcg.schedule_vertex(action)
+        
+        cz0 = self.tcg.vertex_to_vehicle_cz[self.tcg.t1_prev[action]][1]
+        cz1 = self.tcg.vertex_to_vehicle_cz[action][1]
+        cz2 = self.tcg.vertex_to_vehicle_cz[self.tcg.t1_next[action]][1]
+        if self.tcg.t1_prev[action] != -1:
+            self.transitions.remove((cz0, cz1))
+        if self.tcg.t1_next[action] != -1:
+            self.transitions.add((cz1, cz2))
+
         adj, feature, front_vertices, mask = self.make_state()
         cur_delay_time = self.tcg.get_delay_time()
         reward = (self.prev_delay_time - cur_delay_time)
@@ -50,4 +80,6 @@ class TcgEnv:
     def reset(self, intersection: Intersection, vehicles: Iterable[Vehicle]):
         self.tcg = TimingConflictGraphNumpy(intersection, vehicles)
         self.prev_delay_time = 0
+        self.cycle_finder = CycleFinder(intersection)
+        self.transitions = set()
         return self.make_state()
