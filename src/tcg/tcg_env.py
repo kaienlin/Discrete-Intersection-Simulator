@@ -4,14 +4,11 @@ import numpy as np
 
 from simulation import Intersection, Vehicle
 from cycle_finder import CycleFinder
-from .tcg_numpy import TimingConflictGraphNumpy
+from .tcg_numpy import TimingConflictGraphNumpy, DeadlockException
 
 
 class TcgEnv:
-    def __init__(
-        self,
-        ensure_deadlock_free: bool = True
-    ):
+    def __init__(self, ensure_deadlock_free: bool = True):
         self.ensure_deadlock_free: bool = ensure_deadlock_free
 
     def done(self) -> bool:
@@ -22,7 +19,7 @@ class TcgEnv:
         if vertex2 == -1:
             return False
         cz2 = self.tcg.vertex_to_vehicle_cz[vertex2][1]
-        cz1 = self.tcg.vertex_to_vehicle_cz[vertex][1]       
+        cz1 = self.tcg.vertex_to_vehicle_cz[vertex][1]
 
         vertex0 = self.tcg.t1_prev[vertex]
         if vertex0 != -1:
@@ -44,12 +41,17 @@ class TcgEnv:
 
         entering_time_lb: np.ndarray = self.tcg.entering_time_lb
         is_scheduled: np.ndarray = self.tcg.is_scheduled
-        feature: np.ndarray = np.concatenate([
-            entering_time_lb.reshape(-1, 1).astype(np.single) / 10,
-            is_scheduled.reshape(-1, 1).astype(np.single)
-        ], axis=1)
+        feature: np.ndarray = np.concatenate(
+            [
+                entering_time_lb.reshape(-1, 1).astype(np.single) / 10,
+                is_scheduled.reshape(-1, 1).astype(np.single),
+            ],
+            axis=1,
+        )
 
-        front_vertices: np.ndarray = self.tcg.front_unscheduled_vertices.astype(np.int64)
+        front_vertices: np.ndarray = self.tcg.front_unscheduled_vertices.astype(
+            np.int64
+        )
         mask: np.ndarray = self.tcg.schedulable_mask
 
         if self.ensure_deadlock_free:
@@ -62,7 +64,7 @@ class TcgEnv:
 
     def step(self, action: int):
         self.tcg.schedule_vertex(action)
-        
+
         cz0 = self.tcg.vertex_to_vehicle_cz[self.tcg.t1_prev[action]][1]
         cz1 = self.tcg.vertex_to_vehicle_cz[action][1]
         cz2 = self.tcg.vertex_to_vehicle_cz[self.tcg.t1_next[action]][1]
@@ -73,7 +75,7 @@ class TcgEnv:
 
         adj, feature, front_vertices, mask = self.make_state()
         cur_delay_time = self.tcg.get_delay_time()
-        reward = (self.prev_delay_time - cur_delay_time)
+        reward = self.prev_delay_time - cur_delay_time
         self.prev_delay_time = cur_delay_time
         return adj, feature, reward, self.done(), front_vertices, mask
 
@@ -83,3 +85,98 @@ class TcgEnv:
         self.cycle_finder = CycleFinder(intersection)
         self.transitions = set()
         return self.make_state()
+
+
+class TcgEnvWithRollback:
+    def done(self) -> bool:
+        return self.tcg.is_scheduled.all()
+
+    def make_state(self):
+        adj: np.ndarray = self.tcg.t1_edge + self.tcg.t3_edge_min + self.tcg.t4_edge_min
+        adj = (adj != 0).astype(np.single)
+        adj += np.eye(adj.shape[0], dtype=np.single)
+
+        entering_time_lb: np.ndarray = self.tcg.entering_time_lb
+        is_scheduled: np.ndarray = self.tcg.is_scheduled
+        feature: np.ndarray = np.concatenate(
+            [
+                entering_time_lb.reshape(-1, 1).astype(np.single) / 10,
+                is_scheduled.reshape(-1, 1).astype(np.single),
+            ],
+            axis=1,
+        )
+
+        front_vertices: np.ndarray = self.tcg.front_unscheduled_vertices.astype(
+            np.int64
+        )
+        mask: np.ndarray = self.tcg.schedulable_mask
+        for a in self.blocked_actions[-1]:
+            mask[np.where(front_vertices == a)] = 1
+
+        return adj, feature, front_vertices, mask
+
+    def step(self, action: int):
+        assert action not in self.blocked_actions[-1]
+        deadlock = False
+
+        try:
+            self.tcg.schedule_vertex(action)
+        except DeadlockException:
+            deadlock = True
+
+        self.blocked_actions.append([])
+        self.action_history.append(action)
+
+        adj, feature, front_vertices, mask = self.make_state()
+
+        cur_delay_time = self.tcg.get_delay_time()
+        self.delay_time_history.append(cur_delay_time)
+
+        reward = self.prev_delay_time - cur_delay_time
+        self.prev_delay_time = cur_delay_time
+        self.reward_history.append(reward)
+
+        cnt = 0
+        while deadlock:
+            reward = 0
+            cnt += 1
+            if cnt >= 2:
+                print(cnt, end=" ")
+            action_causing_deadlock = self.action_history[-1]
+            self.rollback()
+            self.blocked_actions[-1].append(action_causing_deadlock)
+            adj, feature, front_vertices, mask = self.make_state()
+            for a in self.blocked_actions[-1]:
+                mask[np.where(front_vertices == a)] = 1
+            deadlock = mask.all()
+
+        # if deadlock occurs, the returned reward is meaningless
+        return adj, feature, reward, self.done(), front_vertices, mask
+
+    def reset(self, intersection: Intersection, vehicles: Iterable[Vehicle]):
+        self.tcg = TimingConflictGraphNumpy(intersection, vehicles)
+        self.prev_delay_time = 0
+
+        # history
+        self.action_history = []
+        self.reward_history = []
+        self.delay_time_history = []
+        self.blocked_actions = [[]]
+
+        return self.make_state()
+
+    def rollback(self):
+        if len(self.action_history) == 0:
+            return
+
+        self.tcg.unschedule_vertex(self.action_history[-1])
+        self.action_history.pop(-1)
+        self.reward_history.pop(-1)
+
+        self.delay_time_history.pop(-1)
+        if len(self.delay_time_history) > 0:
+            self.prev_delay_time = self.delay_time_history[-1]
+        else:
+            self.prev_delay_time = 0
+
+        self.blocked_actions.pop(-1)
