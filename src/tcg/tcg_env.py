@@ -126,8 +126,13 @@ class TcgEnvWithRollback:
 
         self.blocked_actions.append([])
         self.action_history.append(action)
+        self.a_idx_history.append(np.argwhere(self.vertices_history[-1].cpu() == action)[0][0])
 
         adj, feature, front_vertices, mask = self.make_state()
+        self.adj_history.append(adj)
+        self.feature_history.append(feature)
+        self.vertices_history.append(front_vertices)
+        self.mask_history.append(mask)
 
         cur_delay_time = self.tcg.get_delay_time()
         self.delay_time_history.append(cur_delay_time)
@@ -136,18 +141,14 @@ class TcgEnvWithRollback:
         self.prev_delay_time = cur_delay_time
         self.reward_history.append(reward)
 
-        cnt = 0
         while deadlock:
             reward = 0
-            cnt += 1
-            if cnt >= 2:
-                print(cnt, end=" ")
             action_causing_deadlock = self.action_history[-1]
             self.rollback()
             self.blocked_actions[-1].append(action_causing_deadlock)
             adj, feature, front_vertices, mask = self.make_state()
             for a in self.blocked_actions[-1]:
-                mask[np.where(front_vertices == a)] = 1
+                mask[(front_vertices == a).nonzero()] = 1
             deadlock = mask.all()
 
         # if deadlock occurs, the returned reward is meaningless
@@ -156,14 +157,21 @@ class TcgEnvWithRollback:
     def reset(self, intersection: Intersection, vehicles: Iterable[Vehicle]):
         self.tcg = TimingConflictGraphNumpy(intersection, vehicles)
         self.prev_delay_time = 0
-
-        # history
-        self.action_history = []
-        self.reward_history = []
-        self.delay_time_history = []
         self.blocked_actions = [[]]
 
-        return self.make_state()
+        adj, feature, front_vertices, mask = self.make_state()
+
+        # history
+        self.adj_history = [adj]
+        self.feature_history = [feature]
+        self.vertices_history = [front_vertices]
+        self.mask_history = [mask]
+        self.a_idx_history = []
+        self.action_history = []
+        self.reward_history = []
+        self.delay_time_history = [0]
+
+        return adj, feature, front_vertices, mask
 
     def rollback(self):
         if len(self.action_history) == 0:
@@ -172,11 +180,13 @@ class TcgEnvWithRollback:
         self.tcg.unschedule_vertex(self.action_history[-1])
         self.action_history.pop(-1)
         self.reward_history.pop(-1)
+        self.adj_history.pop(-1)
+        self.feature_history.pop(-1)
+        self.vertices_history.pop(-1)
+        self.mask_history.pop(-1)
+        self.a_idx_history.pop(-1)
 
         self.delay_time_history.pop(-1)
-        if len(self.delay_time_history) > 0:
-            self.prev_delay_time = self.delay_time_history[-1]
-        else:
-            self.prev_delay_time = 0
+        self.prev_delay_time = self.delay_time_history[-1]
 
         self.blocked_actions.pop(-1)
