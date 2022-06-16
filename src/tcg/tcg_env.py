@@ -1,10 +1,15 @@
 from typing import Iterable
+from copy import deepcopy
 
 import numpy as np
 
 from simulation import Intersection, Vehicle
 from cycle_finder import CycleFinder
 from .tcg_numpy import TimingConflictGraphNumpy, DeadlockException
+
+
+ROLLBACK_SANITY_CHECK = False
+ROLLBACK_THRESHOLD = 6
 
 
 class TcgEnv:
@@ -126,7 +131,10 @@ class TcgEnvWithRollback:
 
         self.blocked_actions.append([])
         self.action_history.append(action)
-        self.a_idx_history.append(np.argwhere(self.vertices_history[-1].cpu() == action)[0][0])
+        if isinstance(self.vertices_history[-1], np.ndarray):
+            self.a_idx_history.append(np.argwhere(self.vertices_history[-1] == action)[0][0])
+        else:
+            self.a_idx_history.append(np.argwhere(self.vertices_history[-1].cpu() == action)[0][0])
 
         adj, feature, front_vertices, mask = self.make_state()
         self.adj_history.append(adj)
@@ -141,15 +149,30 @@ class TcgEnvWithRollback:
         self.prev_delay_time = cur_delay_time
         self.reward_history.append(reward)
 
-        while deadlock:
+        phy_state = self.get_phy_state()
+
+        rollback_cnt = 0
+        while deadlock or phy_state in self.dead_states:
+            rollback_cnt += 1
+            self.dead_states.add(phy_state)
             reward = 0
             action_causing_deadlock = self.action_history[-1]
-            self.rollback()
-            self.blocked_actions[-1].append(action_causing_deadlock)
+
+            if rollback_cnt > ROLLBACK_THRESHOLD:
+                entrance_v = action
+                while entrance_v not in self.tcg.first_vertices:
+                    entrance_v -= 1
+                self.rollback_until(entrance_v)
+                self.blocked_actions[-1].append(entrance_v)
+            else:
+                self.rollback()
+                self.blocked_actions[-1].append(action_causing_deadlock)
+
             adj, feature, front_vertices, mask = self.make_state()
             for a in self.blocked_actions[-1]:
                 mask[(front_vertices == a).nonzero()] = 1
             deadlock = mask.all()
+            phy_state = self.get_phy_state()
 
         # if deadlock occurs, the returned reward is meaningless
         return adj, feature, reward, self.done(), front_vertices, mask
@@ -170,6 +193,7 @@ class TcgEnvWithRollback:
         self.action_history = []
         self.reward_history = []
         self.delay_time_history = [0]
+        self.dead_states = set()
 
         return adj, feature, front_vertices, mask
 
@@ -190,3 +214,18 @@ class TcgEnvWithRollback:
         self.prev_delay_time = self.delay_time_history[-1]
 
         self.blocked_actions.pop(-1)
+
+        if ROLLBACK_SANITY_CHECK and isinstance(self.adj_history[-1], np.ndarray):
+            adj, feature, front_vertices, mask = self.make_state()
+            assert (adj == self.adj_history[-1]).all()
+
+    def rollback_until(self, vertex: int):
+        while self.tcg.is_scheduled[vertex]:
+            self.rollback()
+
+    def get_phy_state(self):
+        progress = self.tcg.vehicle_progress.tolist()
+        for i in range(len(progress)):
+            if self.tcg.is_scheduled[progress[i]]:
+                progress[i] = -1
+        return tuple(progress) + (-9999, ) + tuple(sorted(self.blocked_actions[-1]))

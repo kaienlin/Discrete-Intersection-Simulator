@@ -375,6 +375,10 @@ class TimingConflictGraphNumpy:
     def get_last_leaving_time(self) -> float:
         return np.max(self.entering_time_lb + self.passing_time) / 10
 
+    def get_vehicle_by_vertex(self, vertex: int) -> str:
+        idx, _ = self.vertex_to_vehicle_cz[vertex]
+        return self.vehicle_list[idx].id
+
     def plot(self, fname="fig.png") -> None:
         G = nx.DiGraph()
 

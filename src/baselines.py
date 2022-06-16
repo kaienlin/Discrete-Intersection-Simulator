@@ -4,7 +4,7 @@ import numpy as np
 
 from utility import read_intersection_from_json
 from traffic_gen import load_vehicles_from_file, datadir_traffic_generator
-from tcg.tcg_env import TcgEnv
+from tcg.tcg_env import TcgEnv, TcgEnvWithRollback
 from tcg.tcg_numpy import TimingConflictGraphNumpy
 
 
@@ -27,16 +27,14 @@ def eval_priority_based_policy(intersection, datadir, priority_based_policy):
     avg_reward_sum = 0.0
     num_case = 0
     for vehicles in datadir_traffic_generator(intersection, datadir):
-        env = TcgEnv(ensure_deadlock_free=True)
+        env = TcgEnvWithRollback()
         adj, feature, vertices, mask = env.reset(intersection, vehicles)
         done = False
-        reward_sum = 0
         while not done:
             schedulable_vertices = vertices[(mask == 0).nonzero()]
             action = priority_based_policy(env, schedulable_vertices, feature)
             adj, feature, reward, done, vertices, mask = env.step(action)
-            reward_sum += reward
-        avg_reward_sum += reward_sum
+        avg_reward_sum += sum(env.reward_history)
         num_case += 1
     return -avg_reward_sum / num_case
 
@@ -135,13 +133,13 @@ def optimal_sol(intersection, datadir):
 
 
 if __name__ == "__main__":
-    datadir = pathlib.Path("../testdata/validation-100/")
-    intersection = read_intersection_from_json("../intersection_configs/2x2.json")
+    datadir = pathlib.Path("../testdata/4-approach-3-lane-n30")
+    intersection = read_intersection_from_json("../intersection_configs/4-approach-3-lane.json")
 
     igreedy_result = eval_priority_based_policy(intersection, datadir, igreedy_policy)
     fcfs_result = eval_priority_based_policy(intersection, datadir, fcfs_policy)
-    opt_result = optimal_sol(intersection, datadir)
+    #opt_result = optimal_sol(intersection, datadir)
 
-    print(f"OPT     : {opt_result:0.6f}")
+    #print(f"OPT     : {opt_result:0.6f}")
     print(f"IGreedy : {igreedy_result:0.6f}")
     print(f"FCFS    : {fcfs_result:0.6f}")
