@@ -1,5 +1,4 @@
 from typing import Iterable
-from copy import deepcopy
 
 import numpy as np
 
@@ -132,9 +131,13 @@ class TcgEnvWithRollback:
         self.blocked_actions.append([])
         self.action_history.append(action)
         if isinstance(self.vertices_history[-1], np.ndarray):
-            self.a_idx_history.append(np.argwhere(self.vertices_history[-1] == action)[0][0])
+            self.a_idx_history.append(
+                np.argwhere(self.vertices_history[-1] == action)[0][0]
+            )
         else:
-            self.a_idx_history.append(np.argwhere(self.vertices_history[-1].cpu() == action)[0][0])
+            self.a_idx_history.append(
+                np.argwhere(self.vertices_history[-1].cpu() == action)[0][0]
+            )
 
         adj, feature, front_vertices, mask = self.make_state()
         self.adj_history.append(adj)
@@ -228,4 +231,4 @@ class TcgEnvWithRollback:
         for i in range(len(progress)):
             if self.tcg.is_scheduled[progress[i]]:
                 progress[i] = -1
-        return tuple(progress) + (-9999, ) + tuple(sorted(self.blocked_actions[-1]))
+        return tuple(progress) + (-9999,) + tuple(sorted(self.blocked_actions[-1]))
